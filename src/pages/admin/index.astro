@@ -14,326 +14,424 @@ import "../../styles/global.css";
     <title>관리자 - 대치프라임 면접반</title>
     <meta name="robots" content="noindex, nofollow" />
   </head>
-  <body class="font-sans text-gray-800 bg-gray-50 min-h-screen">
+  <body class="admin-body">
+    <!-- 헤더 -->
+    <header class="admin-header">
+      <div class="admin-header-inner">
+        <div class="admin-header-left">
+          <img src="/favicon-circle.png" alt="대치프라임" style="width:34px;height:34px;border-radius:50%;object-fit:cover" />
+          <div>
+            <span class="admin-title-text">DC Prime</span>
+            <span class="admin-badge">관리자</span>
+          </div>
+        </div>
+        <div class="admin-header-right">
+          <button class="hamburger-btn" id="hamburgerBtn" title="메뉴">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </button>
+          <button class="icon-btn" id="logoutBtn" title="로그아웃">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
 
-    <!-- 로그인 화면 -->
-    <div id="login-screen" class="flex items-center justify-center min-h-screen px-5">
-      <div class="bg-white rounded-2xl shadow-sm p-10 w-full max-w-sm">
-        <h1 class="text-lg font-bold text-gray-900 mb-1 text-center">관리자 로그인</h1>
-        <p class="text-xs text-gray-400 mb-6 text-center">대치프라임 면접반 학생관리</p>
-        <input id="admin-pw" type="password" placeholder="비밀번호" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm mb-3 focus:outline-none focus:border-brand" />
-        <p id="login-error" class="text-red-500 text-xs mb-3 hidden">비밀번호가 틀렸습니다.</p>
-        <button id="login-btn" class="w-full bg-brand text-white rounded-lg py-3 text-sm font-semibold hover:opacity-90 transition-opacity">로그인</button>
+      <div class="tab-bar">
+        <button class="tab-btn" data-tab="schedule">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          일정 관리
+        </button>
+        <button class="tab-btn" data-tab="study">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          학습 현황
+        </button>
+        <button class="tab-btn active" data-tab="students">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M19 5v6M16 8h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          학생 관리
+        </button>
+        <button class="tab-bar-logout" id="hamburgerLogoutBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          로그아웃
+        </button>
+      </div>
+    </header>
+
+    <!-- 일정 관리 -->
+    <div class="tab-panel" id="tabSchedule">
+      <div class="admin-panel">
+        <p class="empty-text">일정 관리는 준비 중입니다.</p>
       </div>
     </div>
 
-    <!-- 관리자 패널 -->
-    <div id="admin-panel" class="hidden">
-      <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-6">
-          <h1 class="text-lg font-bold text-gray-900">대치프라임 면접반 관리자</h1>
-          <nav class="flex items-center gap-1">
-            <span class="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-light text-brand-dark">학생관리</span>
-          </nav>
-        </div>
-        <button id="logout-btn" class="text-sm text-gray-500 hover:text-gray-900 transition-colors">로그아웃</button>
-      </div>
-
-      <div class="max-w-4xl mx-auto px-4 py-8">
-
-        <!-- 등록/수정 폼 -->
-        <div id="student-form-card" class="bg-white rounded-2xl shadow-sm p-6 mb-6">
-          <h2 id="form-title" class="text-base font-bold text-gray-900 mb-4">학생 등록</h2>
-          <input type="hidden" id="edit-id" />
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">이름</label>
-              <input id="input-name" type="text" placeholder="홍길동" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
-            </div>
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">학교</label>
-              <input id="input-school" type="text" placeholder="OO고등학교" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
-            </div>
-            <div>
-              <label class="block text-xs text-gray-500 mb-1">학년</label>
-              <select id="input-grade" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand">
-                <option value="">선택 안 함</option>
-                <option>고1</option><option>고2</option><option>고3</option><option>N수</option>
-              </select>
-            </div>
-          </div>
-          <div class="mb-4">
-            <label id="password-label" class="block text-xs text-gray-500 mb-1">비밀번호</label>
-            <input id="input-password" type="text" placeholder="학생에게 부여할 비밀번호" class="w-full sm:w-1/2 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
-            <p id="password-hint" class="text-xs text-gray-400 mt-1 hidden">비워두면 기존 비밀번호가 유지됩니다.</p>
-          </div>
-          <div class="flex items-center gap-3">
-            <button id="submit-btn" class="bg-brand text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">등록</button>
-            <button id="cancel-edit-btn" class="hidden border border-gray-300 text-gray-600 rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-gray-50 transition-colors">취소</button>
-            <p id="form-msg" class="text-sm text-gray-500 hidden"></p>
-          </div>
-        </div>
-
-        <!-- 필터 -->
-        <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="filter-search" type="text" placeholder="이름·학교 검색"
-              class="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand" />
-            <button id="filter-reset" class="text-xs text-gray-400 hover:text-gray-700 transition-colors px-2">초기화</button>
-          </div>
-          <p id="result-count" class="text-xs text-gray-400 mt-3"></p>
-        </div>
-
-        <!-- 목록 (데스크톱: 표) -->
-        <div class="bg-white rounded-2xl shadow-sm overflow-hidden hidden sm:block">
-          <table class="w-full text-sm">
-            <thead>
-              <tr class="border-b border-gray-100 text-left text-xs text-gray-400">
-                <th class="px-5 py-3 font-medium">이름</th>
-                <th class="px-5 py-3 font-medium">학교</th>
-                <th class="px-5 py-3 font-medium">학년</th>
-                <th class="px-5 py-3 font-medium">등록일</th>
-                <th class="px-5 py-3 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody id="student-table-body" class="divide-y divide-gray-100">
-              <tr><td colspan="5" class="px-5 py-8 text-center text-gray-400">불러오는 중...</td></tr>
-            </tbody>
-          </table>
-        </div>
-
-        <!-- 목록 (모바일: 카드) -->
-        <div id="student-card-list" class="sm:hidden space-y-3">
-          <p class="text-sm text-gray-400 py-4 text-center">불러오는 중...</p>
-        </div>
-
+    <!-- 학습 현황 -->
+    <div class="tab-panel" id="tabStudy">
+      <div class="admin-panel">
+        <p class="empty-text">학습 현황은 준비 중입니다.</p>
       </div>
     </div>
+
+    <!-- 학생 관리 -->
+    <div class="tab-panel active" id="tabStudents">
+      <div class="admin-panel">
+        <div class="panel-toolbar">
+          <h2 class="section-subtitle" style="margin:0">학생 목록</h2>
+          <button class="btn-primary-sm" id="addStudentBtn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
+            학생 추가
+          </button>
+        </div>
+        <div class="student-mgmt-list" id="studentMgmtList">
+          <p class="empty-text">학생 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 학생 추가/수정 모달 -->
+    <div class="modal-overlay" id="studentModal">
+      <div class="modal modal--form">
+        <h3 class="modal-title" id="studentModalTitle">학생 추가</h3>
+
+        <div class="form-group">
+          <label class="form-label">이름 <span class="form-required">*</span></label>
+          <input class="form-input" id="fieldName" type="text" placeholder="홍길동" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">비밀번호 <span class="form-required">*</span></label>
+          <input class="form-input" id="fieldPassword" type="text" placeholder="학생에게 부여할 비밀번호" maxlength="20" />
+          <p class="form-hint" id="passwordHint">수정 시 비워두면 기존 비밀번호 유지</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">학교</label>
+          <input class="form-input" id="fieldSchool" type="text" placeholder="OO고등학교" maxlength="30" />
+        </div>
+
+        <p class="form-error" id="studentFormError"></p>
+
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn--cancel" id="studentModalCancel">취소</button>
+          <button class="modal-btn modal-btn--save" id="studentModalSave">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 학생 삭제 확인 모달 -->
+    <div class="modal-overlay" id="deleteStudentModal">
+      <div class="modal">
+        <h3 class="modal-title">학생을 삭제할까요?</h3>
+        <p class="modal-desc">삭제하면 해당 학생의 로그인 정보가 함께 삭제되며 복구할 수 없습니다.</p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn--cancel" id="deleteCancel">취소</button>
+          <button class="modal-btn modal-btn--confirm" id="deleteConfirm">삭제</button>
+        </div>
+      </div>
+    </div>
+
+    <style is:global>
+      :root {
+        --blue: #0064FF;
+        --blue-hover: #0050CC;
+        --blue-light: #EBF3FF;
+        --black: #191F28;
+        --gray-1: #333D4B;
+        --gray-2: #4E5968;
+        --gray-3: #8B95A1;
+        --gray-4: #B0B8C1;
+        --gray-5: #D1D6DB;
+        --gray-6: #E5E8EB;
+        --gray-7: #F2F4F6;
+        --gray-8: #F7F8FA;
+        --red: #F04452;
+        --r-sm: 8px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+        --shadow-sm: 0 1px 4px rgba(0,0,0,.06);
+        --shadow-md: 0 4px 16px rgba(0,0,0,.10);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,.14);
+      }
+
+      .admin-body { display: flex; flex-direction: column; min-height: 100dvh; background: var(--gray-8); }
+
+      .admin-header { background: var(--white, #fff); border-bottom: 1px solid var(--gray-6); padding: env(safe-area-inset-top) 0 0; flex-shrink: 0; position: sticky; top: 0; z-index: 150; }
+      .admin-header-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 18px; }
+      .admin-header-left { display: flex; align-items: center; gap: 9px; }
+      .admin-title-text { font-size: 15px; font-weight: 700; color: var(--black); letter-spacing: -.2px; }
+      .admin-header-right { display: flex; align-items: center; gap: 2px; }
+      .admin-badge { display: inline-block; padding: 2px 8px; background: linear-gradient(135deg,var(--blue),#5B9FFF); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; margin-left: 6px; }
+      .icon-btn { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--gray-2); background: none; border: none; cursor: pointer; transition: background .15s; }
+      .icon-btn:hover { background: var(--gray-7); }
+
+      .tab-bar { display: flex; border-top: 1px solid var(--gray-7); }
+      .tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; height: 44px; font-size: 13px; font-weight: 500; color: var(--gray-3); border-bottom: 2px solid transparent; background: none; border-left: none; border-right: none; border-top: none; transition: color .2s, border-color .2s; white-space: nowrap; cursor: pointer; }
+      .tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+      .tab-btn svg { flex-shrink: 0; }
+
+      .hamburger-btn { display: none; width: 36px; height: 36px; border-radius: 50%; align-items: center; justify-content: center; color: var(--gray-2); background: none; border: none; cursor: pointer; }
+      .hamburger-btn:active { background: var(--gray-6); }
+      .tab-bar-logout { display: none; }
+
+      @media (max-width: 767px) {
+        .admin-header-inner { position: relative; }
+        .hamburger-btn { display: flex; }
+        .tab-bar { display: none; }
+
+        .menu-backdrop.show { display: block; position: fixed; inset: 0; background: transparent; z-index: 100; }
+
+        .tab-bar.open {
+          display: flex; flex-direction: column;
+          position: fixed; top: 0; right: 0; bottom: 0;
+          width: 78%; max-width: 280px;
+          background: white;
+          border-top: none;
+          z-index: 101;
+          padding: calc(56px + env(safe-area-inset-top)) 0 12px;
+          box-shadow: -6px 0 20px rgba(0,0,0,.18);
+          animation: drawerSlideIn .2s ease;
+          overflow-y: auto;
+        }
+        .tab-bar.open .tab-btn { flex: none; background: white; height: 52px; justify-content: flex-start; padding: 0 24px; gap: 26px; font-size: 15px; font-weight: 500; color: var(--black); border: none; }
+        .tab-bar.open .tab-btn svg { width: 20px; height: 20px; color: var(--gray-3); flex-shrink: 0; }
+        .tab-bar.open .tab-btn.active { color: var(--blue); font-weight: 700; }
+        .tab-bar.open .tab-btn.active svg { color: var(--blue); }
+        .tab-bar.open .tab-bar-logout {
+          display: flex; align-items: center; gap: 26px;
+          height: 52px; padding: 0 24px; margin-top: 12px;
+          font-size: 15px; font-weight: 500; color: var(--black);
+          border: none; border-top: 1px solid var(--gray-7); background: none;
+          width: 100%; text-align: left; cursor: pointer;
+        }
+      }
+      @keyframes drawerSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+      .tab-panel { display: none; flex: 1; }
+      .tab-panel.active { display: flex; flex-direction: column; }
+
+      .admin-panel { padding: 16px; max-width: 900px; margin: 0 auto; width: 100%; }
+      @media (min-width: 768px) { .admin-panel { padding: 28px 24px; } }
+
+      .panel-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+      .section-subtitle { font-size: 14px; font-weight: 700; color: var(--black); }
+      .btn-primary-sm { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 700; color: white; background: var(--blue); border: none; cursor: pointer; transition: background .15s; display: flex; align-items: center; gap: 5px; }
+      .btn-primary-sm:hover { background: var(--blue-hover); }
+
+      .empty-text { font-size: 13px; color: var(--gray-4); text-align: center; padding: 24px 0; }
+
+      .student-mgmt-list { display: flex; flex-direction: column; gap: 10px; }
+      .student-mgmt-card { background: white; border-radius: var(--r-md); padding: 16px 18px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-sm); transition: box-shadow .15s; }
+      .student-mgmt-card:hover { box-shadow: var(--shadow-md); }
+      .student-mgmt-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, var(--blue), #5B9FFF); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: white; }
+      .student-mgmt-info { flex: 1; min-width: 0; }
+      .student-mgmt-name { font-size: 15px; font-weight: 700; color: var(--black); }
+      .student-mgmt-meta { font-size: 12px; color: var(--gray-3); margin-top: 2px; }
+      .student-mgmt-actions { display: flex; gap: 6px; flex-shrink: 0; }
+      .btn-edit { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-light); border: 1px solid #C2D9FF; cursor: pointer; transition: background .15s; }
+      .btn-edit:hover { background: #D6E9FF; }
+      .btn-delete { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--red); background: #FEE8EA; border: 1px solid #FCC; cursor: pointer; transition: background .15s; }
+      .btn-delete:hover { background: #FDD; }
+
+      .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; justify-content: center; z-index: 200; padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(2px); }
+      .modal-overlay.show { display: flex; animation: fadeIn .2s ease; }
+      .modal { background: white; border-radius: var(--r-xl) var(--r-xl) 0 0; padding: 28px 22px 22px; width: 100%; max-width: 480px; text-align: center; animation: slideUp .28s cubic-bezier(.34,1.56,.64,1); }
+      .modal-title { font-size: 18px; font-weight: 800; color: var(--black); margin-bottom: 8px; }
+      .modal-desc { font-size: 13px; color: var(--gray-3); line-height: 1.7; margin-bottom: 22px; }
+      .modal-actions { display: flex; gap: 8px; }
+      .modal-btn { flex: 1; height: 50px; border-radius: var(--r-md); font-size: 15px; font-weight: 700; border: none; cursor: pointer; transition: all .15s; }
+      .modal-btn--cancel { background: var(--gray-7); color: var(--gray-2); }
+      .modal-btn--cancel:hover { background: var(--gray-6); }
+      .modal-btn--confirm { background: var(--red); color: white; }
+      .modal-btn--confirm:hover { background: #D63040; }
+      .modal-btn--save { background: var(--blue); color: white; }
+      .modal-btn--save:hover { background: var(--blue-hover); }
+      .modal-btn:active { transform: scale(.97); }
+
+      .modal--form { padding: 28px 22px 22px; text-align: left; }
+      .modal--form .modal-title { text-align: left; margin-bottom: 20px; }
+      .form-group { margin-bottom: 14px; }
+      .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-2); margin-bottom: 6px; }
+      .form-required { color: var(--blue); }
+      .form-hint { font-size: 11px; color: var(--gray-4); margin-top: 4px; }
+      .form-input { width: 100%; height: 44px; padding: 0 12px; border-radius: var(--r-sm); border: 1.5px solid var(--gray-6); background: var(--gray-8); font-size: 14px; color: var(--black); transition: border-color .2s; font-family: inherit; }
+      .form-input:focus { border-color: var(--blue); background: white; outline: none; }
+      .form-error { font-size: 13px; color: var(--red); min-height: 18px; margin-bottom: 12px; }
+
+      @media (min-width: 768px) {
+        .modal-overlay { align-items: center; }
+        .modal { border-radius: var(--r-xl); }
+      }
+
+      @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+      @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+    </style>
 
     <script>
       import { supabase } from "../../lib/supabase";
 
       const SESSION_KEY = "admin_authed";
+      if (sessionStorage.getItem(SESSION_KEY) !== "ok") {
+        window.location.href = "/";
+      }
 
       type Student = {
         id: string;
         name: string;
         school: string | null;
-        grade: string | null;
         created_at: string;
       };
 
-      let allStudents: Student[] = [];
+      let studentsCache: Student[] = [];
 
       function $<T extends HTMLElement>(id: string): T {
         return document.getElementById(id) as T;
       }
-
-      function isAuthed(): boolean {
-        return sessionStorage.getItem(SESSION_KEY) === "ok";
-      }
-
-      function showPanel() {
-        $("login-screen").classList.add("hidden");
-        $("admin-panel").classList.remove("hidden");
-        loadStudents();
-      }
-
-      function showLogin() {
-        $("login-screen").classList.remove("hidden");
-        $("admin-panel").classList.add("hidden");
-      }
-
-      $("login-btn").addEventListener("click", async () => {
-        const btn = $<HTMLButtonElement>("login-btn");
-        const pw = $<HTMLInputElement>("admin-pw").value;
-        btn.disabled = true;
-        btn.textContent = "확인 중...";
-        const { data, error } = await supabase.rpc("verify_admin_password", { p_pw: pw });
-        btn.disabled = false;
-        btn.textContent = "로그인";
-        if (!error && data === true) {
-          sessionStorage.setItem(SESSION_KEY, "ok");
-          $("login-error").classList.add("hidden");
-          showPanel();
-        } else {
-          $("login-error").classList.remove("hidden");
-        }
-      });
-
-      $("admin-pw").addEventListener("keydown", (e) => {
-        if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("login-btn").click();
-      });
-
-      $("logout-btn").addEventListener("click", () => {
-        sessionStorage.removeItem(SESSION_KEY);
-        showLogin();
-      });
-
-      if (isAuthed()) showPanel();
-
-      // ── 목록 로드/렌더 ──
-      async function loadStudents() {
-        const { data, error } = await supabase.rpc("admin_list_students");
-        if (error) {
-          console.error(error);
-          return;
-        }
-        allStudents = data ?? [];
-        render();
-      }
-
-      function getFiltered(): Student[] {
-        const search = $<HTMLInputElement>("filter-search").value.trim().toLowerCase();
-        return allStudents.filter((s) => {
-          if (!search) return true;
-          const haystack = `${s.name} ${s.school ?? ""}`.toLowerCase();
-          return haystack.includes(search);
-        });
-      }
-
       function escapeHtml(str: string): string {
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML;
       }
 
-      function formatDate(iso: string): string {
-        return new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
-      }
-
-      function render() {
-        const list = getFiltered();
-        $("result-count").textContent = `총 ${list.length}명`;
-
-        const tbody = $("student-table-body");
-        const cardList = $("student-card-list");
-
-        if (list.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-gray-400">등록된 학생이 없습니다.</td></tr>`;
-          cardList.innerHTML = `<p class="text-sm text-gray-400 py-4 text-center">등록된 학생이 없습니다.</p>`;
-          return;
-        }
-
-        const actions = (id: string) =>
-          `<button data-id="${id}" class="edit-btn text-xs text-brand hover:opacity-70 mr-3">수정</button>
-           <button data-id="${id}" class="reset-pw-btn text-xs text-gray-400 hover:text-gray-700 mr-3">비밀번호 재설정</button>
-           <button data-id="${id}" class="delete-btn text-xs text-red-400 hover:text-red-600">삭제</button>`;
-
-        tbody.innerHTML = list
-          .map(
-            (s) => `
-          <tr class="hover:bg-gray-50">
-            <td class="px-5 py-3 font-medium text-gray-900">${escapeHtml(s.name)}</td>
-            <td class="px-5 py-3 text-gray-600">${escapeHtml(s.school ?? "-")}</td>
-            <td class="px-5 py-3 text-gray-600">${escapeHtml(s.grade ?? "-")}</td>
-            <td class="px-5 py-3 text-gray-400 text-xs">${formatDate(s.created_at)}</td>
-            <td class="px-5 py-3 text-right whitespace-nowrap">${actions(s.id)}</td>
-          </tr>
-        `
-          )
-          .join("");
-
-        cardList.innerHTML = list
-          .map(
-            (s) => `
-          <div class="bg-white rounded-xl shadow-sm p-4">
-            <div class="flex items-center justify-between mb-2">
-              <p class="font-bold text-gray-900">${escapeHtml(s.name)}</p>
-              <div class="flex gap-3">${actions(s.id)}</div>
-            </div>
-            <p class="text-xs text-gray-500">${escapeHtml(s.school ?? "학교 미입력")} · ${escapeHtml(s.grade ?? "학년 미입력")}</p>
-          </div>
-        `
-          )
-          .join("");
-
-        document.querySelectorAll<HTMLButtonElement>(".edit-btn").forEach((btn) =>
-          btn.addEventListener("click", () => startEdit(btn.dataset.id!))
-        );
-        document.querySelectorAll<HTMLButtonElement>(".delete-btn").forEach((btn) =>
-          btn.addEventListener("click", () => deleteStudent(btn.dataset.id!))
-        );
-        document.querySelectorAll<HTMLButtonElement>(".reset-pw-btn").forEach((btn) =>
-          btn.addEventListener("click", () => resetPassword(btn.dataset.id!))
-        );
-      }
-
-      $("filter-search").addEventListener("input", render);
-      $("filter-reset").addEventListener("click", () => {
-        $<HTMLInputElement>("filter-search").value = "";
-        render();
+      $("logoutBtn").addEventListener("click", () => {
+        sessionStorage.removeItem(SESSION_KEY);
+        window.location.href = "/";
       });
 
-      // ── 등록/수정 폼 ──
-      function resetForm() {
-        $("edit-id").setAttribute("value", "");
-        $<HTMLInputElement>("input-name").value = "";
-        $<HTMLInputElement>("input-school").value = "";
-        $<HTMLSelectElement>("input-grade").value = "";
-        $<HTMLInputElement>("input-password").value = "";
-        $("password-hint").classList.add("hidden");
-        $("form-title").textContent = "학생 등록";
-        $("submit-btn").textContent = "등록";
-        $("cancel-edit-btn").classList.add("hidden");
+      // ── 탭 전환 + 햄버거 메뉴 ──
+      const tabBtns = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
+      const panels: Record<string, HTMLElement> = {
+        schedule: $("tabSchedule"),
+        study: $("tabStudy"),
+        students: $("tabStudents"),
+      };
+      const tabBar = document.querySelector<HTMLElement>(".tab-bar")!;
+      const menuBackdrop = document.createElement("div");
+      menuBackdrop.className = "menu-backdrop";
+      document.body.appendChild(menuBackdrop);
+      const closeMenu = () => { tabBar.classList.remove("open"); menuBackdrop.classList.remove("show"); };
+      const openMenu = () => { tabBar.classList.add("open"); menuBackdrop.classList.add("show"); };
+
+      tabBtns.forEach((b) =>
+        b.addEventListener("click", () => {
+          const t = b.dataset.tab!;
+          tabBtns.forEach((x) => x.classList.toggle("active", x.dataset.tab === t));
+          Object.entries(panels).forEach(([k, p]) => p.classList.toggle("active", k === t));
+          closeMenu();
+        })
+      );
+
+      $("hamburgerBtn").addEventListener("click", (e) => {
+        e.stopPropagation();
+        tabBar.classList.contains("open") ? closeMenu() : openMenu();
+      });
+      menuBackdrop.addEventListener("click", closeMenu);
+      $("hamburgerLogoutBtn").addEventListener("click", () => $("logoutBtn").click());
+
+      // ── 학생 목록 ──
+      async function loadStudents() {
+        const { data, error } = await supabase.rpc("admin_list_students");
+        if (error) {
+          console.error(error);
+          return;
+        }
+        studentsCache = data ?? [];
+        renderStudents();
       }
 
-      function startEdit(id: string) {
-        const s = allStudents.find((x) => x.id === id);
+      function renderStudents() {
+        const list = $("studentMgmtList");
+        if (studentsCache.length === 0) {
+          list.innerHTML = `<p class="empty-text">등록된 학생이 없습니다.</p>`;
+          return;
+        }
+        list.innerHTML = studentsCache
+          .map((s) => {
+            const meta = s.school || "학교 미입력";
+            return `
+              <div class="student-mgmt-card">
+                <div class="student-mgmt-avatar">${escapeHtml(s.name.slice(0, 1))}</div>
+                <div class="student-mgmt-info">
+                  <div class="student-mgmt-name">${escapeHtml(s.name)}</div>
+                  <div class="student-mgmt-meta">${escapeHtml(meta)}</div>
+                </div>
+                <div class="student-mgmt-actions">
+                  <button class="btn-edit" data-id="${s.id}">수정</button>
+                  <button class="btn-delete" data-id="${s.id}">삭제</button>
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+
+        list.querySelectorAll<HTMLButtonElement>(".btn-edit").forEach((btn) =>
+          btn.addEventListener("click", () => openEditModal(btn.dataset.id!))
+        );
+        list.querySelectorAll<HTMLButtonElement>(".btn-delete").forEach((btn) =>
+          btn.addEventListener("click", () => openDeleteModal(btn.dataset.id!))
+        );
+      }
+
+      // ── 추가/수정 모달 ──
+      let editingId: string | null = null;
+
+      function openAddModal() {
+        editingId = null;
+        $("studentModalTitle").textContent = "학생 추가";
+        $<HTMLInputElement>("fieldName").value = "";
+        $<HTMLInputElement>("fieldPassword").value = "";
+        $<HTMLInputElement>("fieldSchool").value = "";
+        $("passwordHint").classList.add("hidden");
+        $("studentFormError").textContent = "";
+        $("studentModal").classList.add("show");
+      }
+
+      function openEditModal(id: string) {
+        const s = studentsCache.find((x) => x.id === id);
         if (!s) return;
-        $("edit-id").setAttribute("value", s.id);
-        $<HTMLInputElement>("input-name").value = s.name;
-        $<HTMLInputElement>("input-school").value = s.school ?? "";
-        $<HTMLSelectElement>("input-grade").value = s.grade ?? "";
-        $<HTMLInputElement>("input-password").value = "";
-        $("password-hint").classList.remove("hidden");
-        $("form-title").textContent = "학생 정보 수정";
-        $("submit-btn").textContent = "수정 완료";
-        $("cancel-edit-btn").classList.remove("hidden");
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        editingId = id;
+        $("studentModalTitle").textContent = "학생 수정";
+        $<HTMLInputElement>("fieldName").value = s.name;
+        $<HTMLInputElement>("fieldPassword").value = "";
+        $<HTMLInputElement>("fieldSchool").value = s.school ?? "";
+        $("passwordHint").classList.remove("hidden");
+        $("studentFormError").textContent = "";
+        $("studentModal").classList.add("show");
       }
 
-      $("cancel-edit-btn").addEventListener("click", resetForm);
+      function closeStudentModal() {
+        $("studentModal").classList.remove("show");
+      }
 
-      $("submit-btn").addEventListener("click", async () => {
-        if (!isAuthed()) return;
-        const id = $("edit-id").getAttribute("value");
-        const name = $<HTMLInputElement>("input-name").value.trim();
-        const school = $<HTMLInputElement>("input-school").value.trim() || null;
-        const grade = $<HTMLSelectElement>("input-grade").value || null;
-        const password = $<HTMLInputElement>("input-password").value.trim();
-        const msg = $("form-msg");
+      $("addStudentBtn").addEventListener("click", openAddModal);
+      $("studentModalCancel").addEventListener("click", closeStudentModal);
+
+      $("studentModalSave").addEventListener("click", async () => {
+        const name = $<HTMLInputElement>("fieldName").value.trim();
+        const password = $<HTMLInputElement>("fieldPassword").value.trim();
+        const school = $<HTMLInputElement>("fieldSchool").value.trim() || null;
+        const errorEl = $("studentFormError");
 
         if (!name) {
-          msg.textContent = "이름을 입력해주세요.";
-          msg.classList.remove("hidden");
+          errorEl.textContent = "이름을 입력해주세요.";
           return;
         }
-        if (!id && !password) {
-          msg.textContent = "신규 등록 시 비밀번호는 필수입니다.";
-          msg.classList.remove("hidden");
+        if (!editingId && !password) {
+          errorEl.textContent = "신규 등록 시 비밀번호는 필수입니다.";
           return;
         }
 
-        const btn = $<HTMLButtonElement>("submit-btn");
+        const btn = $<HTMLButtonElement>("studentModalSave");
         btn.disabled = true;
 
         let error;
-        if (id) {
+        if (editingId) {
           ({ error } = await supabase.rpc("admin_update_student", {
-            p_id: id,
+            p_id: editingId,
             p_name: name,
             p_school: school,
-            p_grade: grade,
+            p_grade: null,
           }));
           if (!error && password) {
-            ({ error } = await supabase.rpc("admin_set_student_password", { p_id: id, p_password: password }));
+            ({ error } = await supabase.rpc("admin_set_student_password", { p_id: editingId, p_password: password }));
           }
         } else {
           ({ error } = await supabase.rpc("admin_create_student", {
             p_name: name,
             p_school: school,
-            p_grade: grade,
+            p_grade: null,
             p_password: password,
           }));
         }
@@ -341,37 +439,34 @@ import "../../styles/global.css";
         btn.disabled = false;
 
         if (error) {
-          msg.textContent = "저장에 실패했습니다: " + error.message;
-          msg.classList.remove("hidden");
+          errorEl.textContent = "저장에 실패했습니다: " + error.message;
           return;
         }
 
-        msg.classList.add("hidden");
-        resetForm();
+        closeStudentModal();
         loadStudents();
       });
 
-      async function resetPassword(id: string) {
-        const pw = prompt("새 비밀번호를 입력해주세요.");
-        if (!pw) return;
-        const { error } = await supabase.rpc("admin_set_student_password", { p_id: id, p_password: pw });
-        if (error) {
-          alert("비밀번호 변경에 실패했습니다: " + error.message);
-          return;
-        }
-        alert("비밀번호가 변경되었습니다.");
-      }
+      // ── 삭제 모달 ──
+      let deletingId: string | null = null;
 
-      async function deleteStudent(id: string) {
-        if (!isAuthed()) return;
-        if (!confirm("이 학생 정보를 삭제할까요? 삭제 후에는 복구할 수 없습니다.")) return;
-        const { error } = await supabase.rpc("admin_delete_student", { p_id: id });
+      function openDeleteModal(id: string) {
+        deletingId = id;
+        $("deleteStudentModal").classList.add("show");
+      }
+      $("deleteCancel").addEventListener("click", () => $("deleteStudentModal").classList.remove("show"));
+      $("deleteConfirm").addEventListener("click", async () => {
+        if (!deletingId) return;
+        const { error } = await supabase.rpc("admin_delete_student", { p_id: deletingId });
+        $("deleteStudentModal").classList.remove("show");
         if (error) {
           alert("삭제에 실패했습니다: " + error.message);
           return;
         }
         loadStudents();
-      }
+      });
+
+      loadStudents();
     </script>
   </body>
 </html>

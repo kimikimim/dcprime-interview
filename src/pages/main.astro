@@ -77,7 +77,7 @@ import StudentLayout from "../layouts/StudentLayout.astro";
   if (raw) {
     const session = JSON.parse(raw) as StudentSession;
     const badge = document.getElementById("student-grade-badge");
-    if (badge && session.school) badge.textContent = `${session.school} · ${session.grade ?? ""}`;
+    if (badge && session.school) badge.textContent = session.school;
   }
 
   render();
