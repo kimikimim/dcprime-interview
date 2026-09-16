@@ -123,13 +123,6 @@ import "../styles/panel.css";
         <div class="panel-toolbar">
           <h2 class="section-subtitle" style="margin:0">문제은행</h2>
         </div>
-        <div class="filter-row">
-          <select class="form-input" id="filterUniversity"><option value="">대학 전체</option></select>
-          <select class="form-input" id="filterCategory"><option value="">유형 전체</option></select>
-          <input class="form-input" data-flex id="filterSearch" type="text" placeholder="질문 내용 검색" />
-          <button class="filter-reset" id="filterReset">초기화</button>
-        </div>
-        <p class="result-count" id="resultCount"></p>
         <div id="questionList" style="display:flex;flex-direction:column;gap:10px">
           <p class="empty-text">불러오는 중...</p>
         </div>
@@ -260,15 +253,7 @@ import "../styles/panel.css";
           .join("");
 
         container.querySelectorAll<HTMLButtonElement>(".goto-bank-btn").forEach((btn) =>
-          btn.addEventListener("click", () => {
-            activateTab("bank");
-            const uni = btn.dataset.university!;
-            const sel = $<HTMLSelectElement>("filterUniversity");
-            if ([...sel.options].some((o) => o.value === uni)) {
-              sel.value = uni;
-              renderQuestions();
-            }
-          })
+          btn.addEventListener("click", () => activateTab("bank"))
         );
       }
 
@@ -284,47 +269,14 @@ import "../styles/panel.css";
       let allQuestions: Question[] = [];
       let myAnswers: Record<string, string> = {};
 
-      function populateFilterOptions() {
-        const universities = Array.from(new Set(allQuestions.map((q) => q.university))).sort((a, b) => a.localeCompare(b, "ko"));
-        const categories = Array.from(new Set(allQuestions.map((q) => q.category).filter((c): c is string => !!c))).sort((a, b) => a.localeCompare(b, "ko"));
-
-        const uniSelect = $<HTMLSelectElement>("filterUniversity");
-        universities.forEach((u) => {
-          const opt = document.createElement("option");
-          opt.value = u;
-          opt.textContent = u;
-          uniSelect.appendChild(opt);
-        });
-        const catSelect = $<HTMLSelectElement>("filterCategory");
-        categories.forEach((c) => {
-          const opt = document.createElement("option");
-          opt.value = c;
-          opt.textContent = c;
-          catSelect.appendChild(opt);
-        });
-      }
-
       function renderQuestions() {
-        const university = $<HTMLSelectElement>("filterUniversity").value;
-        const category = $<HTMLSelectElement>("filterCategory").value;
-        const search = $<HTMLInputElement>("filterSearch").value.trim().toLowerCase();
-
-        const filtered = allQuestions.filter((q) => {
-          if (university && q.university !== university) return false;
-          if (category && q.category !== category) return false;
-          if (search && !q.question_text.toLowerCase().includes(search)) return false;
-          return true;
-        });
-
-        $("resultCount").textContent = `총 ${filtered.length}개`;
-
         const list = $("questionList");
-        if (filtered.length === 0) {
-          list.innerHTML = `<p class="empty-text">조건에 맞는 질문이 없습니다.</p>`;
+        if (allQuestions.length === 0) {
+          list.innerHTML = `<p class="empty-text">등록된 질문이 없습니다.</p>`;
           return;
         }
 
-        list.innerHTML = filtered
+        list.innerHTML = allQuestions
           .map((q) => `
             <div class="card">
               <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px">
@@ -494,18 +446,8 @@ import "../styles/panel.css";
           return;
         }
         allQuestions = data ?? [];
-        populateFilterOptions();
         renderQuestions();
       }
-
-      ["filterUniversity", "filterCategory"].forEach((id) => $(id).addEventListener("change", renderQuestions));
-      $("filterSearch").addEventListener("input", renderQuestions);
-      $("filterReset").addEventListener("click", () => {
-        $<HTMLSelectElement>("filterUniversity").value = "";
-        $<HTMLSelectElement>("filterCategory").value = "";
-        $<HTMLInputElement>("filterSearch").value = "";
-        renderQuestions();
-      });
 
       // ── 오늘의 목표 ──
       function todayStr(): string {

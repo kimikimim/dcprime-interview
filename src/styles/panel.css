@@ -112,13 +112,6 @@
 .tag-pill--muted { background: var(--gray-7); color: var(--gray-3); }
 .tag-pill--danger { background: #FEE8EA; color: var(--red); }
 
-.filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
-.filter-row .form-input { width: auto; }
-.filter-row .form-input[data-flex] { flex: 1; min-width: 160px; }
-.filter-reset { font-size: 12px; color: var(--gray-4); background: none; border: none; cursor: pointer; padding: 0 4px; }
-.filter-reset:hover { color: var(--gray-1); }
-.result-count { font-size: 12px; color: var(--gray-4); margin-bottom: 10px; }
-
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; justify-content: center; z-index: 200; padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(2px); }
 .modal-overlay.show { display: flex; animation: fadeIn .2s ease; }
 .modal { background: white; border-radius: var(--r-xl) var(--r-xl) 0 0; padding: 28px 22px 22px; width: 100%; max-width: 480px; text-align: center; animation: slideUp .28s cubic-bezier(.34,1.56,.64,1); }
