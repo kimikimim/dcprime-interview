@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+@theme {
+  /* 브랜드 컬러 (로고 기반 슬레이트 퍼플) */
+  --color-brand: #747ba2;
+  --color-brand-dark: #565d82;
+  --color-brand-light: #f0f1f7;
+
+  /* 기존 호환 */
+  --color-accent-gold: #747ba2;
+  --color-primary-dark-base: #2e3250;
+  --color-neutral-white: #ffffff;
+  --color-secondary-light-gray: #e2e5f0;
+  --color-secondary-medium-gray: #8a8fad;
+
+  /* 폰트 */
+  --font-sans: "Noto Sans KR", "Apple SD Gothic Neo", sans-serif;
+  --font-heading: "Noto Serif KR", "Apple SD Gothic Neo", serif;
+
+  /* 타이포 */
+  --text-h1-desktop: 2.75rem;
+  --text-h1-mobile: 1.875rem;
+  --text-h2-desktop: 2rem;
+  --text-h2-mobile: 1.5rem;
+}

@@ -1,0 +1,179 @@
+-- ============================================================
+-- dcprime-interview (면접 대비반 전용 LMS) Supabase 셋업 SQL
+-- 기존 대치프라임 DB(smnakhjdtbqgwocwlluz)에 그대로 추가 실행
+-- Supabase SQL Editor에 전체 붙여넣고 한 번에 실행 (재실행해도 안전)
+-- 다른 프로젝트와 테이블명이 겹치지 않도록 별도 스키마(interview) 사용
+-- ============================================================
+
+CREATE SCHEMA IF NOT EXISTS interview;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+
+-- ────────────────────────────────────────────
+-- 1. 사이트 공용 비번 / 관리자 비번 설정
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.config (
+  key   text PRIMARY KEY,
+  value text NOT NULL
+);
+ALTER TABLE interview.config ENABLE ROW LEVEL SECURITY;
+-- 정책 없음 = anon 직접 조회 불가, 아래 verify 함수로만 확인
+
+INSERT INTO interview.config (key, value) VALUES
+  ('site_password', '0000'),
+  ('admin_password', '1250')
+ON CONFLICT (key) DO NOTHING;
+
+CREATE OR REPLACE FUNCTION interview.verify_site_password(p_pw text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM interview.config WHERE key = 'site_password' AND value = p_pw);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.verify_site_password(text) TO anon;
+
+CREATE OR REPLACE FUNCTION interview.verify_admin_password(p_pw text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM interview.config WHERE key = 'admin_password' AND value = p_pw);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.verify_admin_password(text) TO anon;
+
+-- ────────────────────────────────────────────
+-- 2. 학생 테이블
+--    비밀번호 해시(password_hash)가 들어있어서 테이블 자체는 anon RLS 정책을 두지 않고
+--    아래 SECURITY DEFINER 함수로만 읽고 쓰게 함 (staff_students보다 한 단계 더 보수적인 모델)
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.students (
+  id            uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  name          text        NOT NULL,
+  school        text,
+  grade         text,
+  password_hash text        NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.students ENABLE ROW LEVEL SECURITY;
+-- 정책 없음 = anon 직접 접근 불가
+
+CREATE OR REPLACE FUNCTION interview.students_set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_interview_students_updated_at ON interview.students;
+CREATE TRIGGER trg_interview_students_updated_at
+  BEFORE UPDATE ON interview.students
+  FOR EACH ROW EXECUTE FUNCTION interview.students_set_updated_at();
+
+-- 학생 로그인: 비밀번호만 입력하면 본인을 찾아서 반환 (이름 선택 불필요)
+CREATE OR REPLACE FUNCTION interview.verify_student_login(p_pw text)
+RETURNS TABLE(id uuid, name text, school text, grade text)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN QUERY
+    SELECT s.id, s.name, s.school, s.grade
+    FROM interview.students s
+    WHERE s.password_hash = extensions.crypt(p_pw, s.password_hash);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.verify_student_login(text) TO anon;
+
+-- 관리자용 학생관리 CRUD (비밀번호는 항상 이 함수들을 통해서만 평문 → 해시)
+CREATE OR REPLACE FUNCTION interview.admin_list_students()
+RETURNS TABLE(id uuid, name text, school text, grade text, created_at timestamptz)
+LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT s.id, s.name, s.school, s.grade, s.created_at
+  FROM interview.students s
+  ORDER BY s.created_at DESC;
+$$;
+GRANT EXECUTE ON FUNCTION interview.admin_list_students() TO anon;
+
+CREATE OR REPLACE FUNCTION interview.admin_create_student(p_name text, p_school text, p_grade text, p_password text)
+RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO interview.students (name, school, grade, password_hash)
+  VALUES (p_name, p_school, p_grade, extensions.crypt(p_password, extensions.gen_salt('bf')))
+  RETURNING id INTO v_id;
+  RETURN v_id;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.admin_create_student(text, text, text, text) TO anon;
+
+CREATE OR REPLACE FUNCTION interview.admin_update_student(p_id uuid, p_name text, p_school text, p_grade text)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE interview.students
+  SET name = p_name, school = p_school, grade = p_grade
+  WHERE id = p_id;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.admin_update_student(uuid, text, text, text) TO anon;
+
+CREATE OR REPLACE FUNCTION interview.admin_set_student_password(p_id uuid, p_password text)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  UPDATE interview.students
+  SET password_hash = extensions.crypt(p_password, extensions.gen_salt('bf'))
+  WHERE id = p_id;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.admin_set_student_password(uuid, text) TO anon;
+
+CREATE OR REPLACE FUNCTION interview.admin_delete_student(p_id uuid)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  DELETE FROM interview.students WHERE id = p_id;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.admin_delete_student(uuid) TO anon;
+
+-- ────────────────────────────────────────────
+-- 3. 문제은행 (대학/전형별 기출·예상 질문)
+--    RLS는 anon 전체 허용 (역할 구분은 앱 화면 단에서만 처리 — dcprime-students staff_students와 동일한 신뢰 모델)
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.questions (
+  id            uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  university    text        NOT NULL,
+  department    text,
+  track         text,
+  category      text,
+  question_text text        NOT NULL,
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.questions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_questions" ON interview.questions;
+DROP POLICY IF EXISTS "anon insert interview_questions" ON interview.questions;
+DROP POLICY IF EXISTS "anon update interview_questions" ON interview.questions;
+DROP POLICY IF EXISTS "anon delete interview_questions" ON interview.questions;
+
+CREATE POLICY "anon select interview_questions" ON interview.questions
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_questions" ON interview.questions
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_questions" ON interview.questions
+  FOR UPDATE TO anon USING (true);
+CREATE POLICY "anon delete interview_questions" ON interview.questions
+  FOR DELETE TO anon USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_interview_questions_university ON interview.questions (university);
+
+-- 데모용 샘플 질문
+INSERT INTO interview.questions (university, department, track, category, question_text)
+SELECT * FROM (VALUES
+  ('서울대학교', '컴퓨터공학부', '지역균형', '전공적합성', '본인이 프로그래밍에 흥미를 느끼게 된 계기를 말해보세요.'),
+  ('서울대학교', '컴퓨터공학부', '지역균형', '인성', '팀 프로젝트에서 갈등을 겪었던 경험과 해결 과정을 설명해보세요.'),
+  ('연세대학교', '경영학과', '활동우수형', '전공적합성', '경영학을 선택한 이유와 관련 활동 경험을 말해보세요.'),
+  ('고려대학교', '심리학과', '학업우수형', '인성', '자기소개서에 기재한 활동 중 가장 의미 있었던 활동은 무엇인가요.')
+) AS v(university, department, track, category, question_text)
+WHERE NOT EXISTS (SELECT 1 FROM interview.questions);

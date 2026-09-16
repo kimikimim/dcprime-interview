@@ -1,0 +1,147 @@
+---
+import StudentLayout from "../layouts/StudentLayout.astro";
+---
+
+<StudentLayout title="문제은행" active="questions">
+  <h1 class="text-xl font-bold text-gray-900 mb-6">문제은행</h1>
+
+  <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+    <div class="flex flex-wrap items-center gap-2">
+      <select id="filter-university" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand">
+        <option value="">대학 전체</option>
+      </select>
+      <select id="filter-category" class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand">
+        <option value="">유형 전체</option>
+      </select>
+      <input id="filter-search" type="text" placeholder="질문 내용 검색"
+        class="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand" />
+      <button id="filter-reset" class="text-xs text-gray-400 hover:text-gray-700 transition-colors px-2">초기화</button>
+    </div>
+    <p id="result-count" class="text-xs text-gray-400 mt-3"></p>
+  </div>
+
+  <div id="question-list" class="space-y-3">
+    <p class="text-sm text-gray-400 py-4 text-center">불러오는 중...</p>
+  </div>
+</StudentLayout>
+
+<script>
+  import { supabase } from "../lib/supabase";
+
+  type Question = {
+    id: string;
+    university: string;
+    department: string | null;
+    track: string | null;
+    category: string | null;
+    question_text: string;
+  };
+
+  let allQuestions: Question[] = [];
+
+  function $<T extends HTMLElement>(id: string): T {
+    return document.getElementById(id) as T;
+  }
+
+  function escapeHtml(str: string): string {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function populateFilterOptions() {
+    const universities = Array.from(new Set(allQuestions.map((q) => q.university))).sort((a, b) =>
+      a.localeCompare(b, "ko")
+    );
+    const categories = Array.from(
+      new Set(allQuestions.map((q) => q.category).filter((c): c is string => !!c))
+    ).sort((a, b) => a.localeCompare(b, "ko"));
+
+    const uniSelect = $<HTMLSelectElement>("filter-university");
+    universities.forEach((u) => {
+      const opt = document.createElement("option");
+      opt.value = u;
+      opt.textContent = u;
+      uniSelect.appendChild(opt);
+    });
+
+    const catSelect = $<HTMLSelectElement>("filter-category");
+    categories.forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c;
+      opt.textContent = c;
+      catSelect.appendChild(opt);
+    });
+
+    const params = new URLSearchParams(window.location.search);
+    const preselect = params.get("university");
+    if (preselect && universities.includes(preselect)) {
+      uniSelect.value = preselect;
+    }
+  }
+
+  function render() {
+    const university = $<HTMLSelectElement>("filter-university").value;
+    const category = $<HTMLSelectElement>("filter-category").value;
+    const search = $<HTMLInputElement>("filter-search").value.trim().toLowerCase();
+
+    const filtered = allQuestions.filter((q) => {
+      if (university && q.university !== university) return false;
+      if (category && q.category !== category) return false;
+      if (search && !q.question_text.toLowerCase().includes(search)) return false;
+      return true;
+    });
+
+    $("result-count").textContent = `총 ${filtered.length}개`;
+
+    const list = $("question-list");
+    if (filtered.length === 0) {
+      list.innerHTML = `<p class="text-sm text-gray-400 py-8 text-center">조건에 맞는 질문이 없습니다.</p>`;
+      return;
+    }
+
+    list.innerHTML = filtered
+      .map(
+        (q) => `
+          <div class="bg-white rounded-2xl shadow-sm p-5">
+            <div class="flex flex-wrap items-center gap-2 mb-2">
+              <span class="text-xs font-semibold text-brand-dark bg-brand-light px-2.5 py-1 rounded-full">${escapeHtml(q.university)}</span>
+              ${q.department ? `<span class="text-xs text-gray-400">${escapeHtml(q.department)}</span>` : ""}
+              ${q.track ? `<span class="text-xs text-gray-400">· ${escapeHtml(q.track)}</span>` : ""}
+              ${q.category ? `<span class="text-xs text-gray-400 ml-auto">${escapeHtml(q.category)}</span>` : ""}
+            </div>
+            <p class="text-sm text-gray-800 leading-relaxed">${escapeHtml(q.question_text)}</p>
+          </div>
+        `
+      )
+      .join("");
+  }
+
+  async function load() {
+    const { data, error } = await supabase
+      .from("questions")
+      .select("*")
+      .order("university", { ascending: true });
+
+    if (error) {
+      $("question-list").innerHTML = `<p class="text-sm text-red-400 py-8 text-center">불러오기에 실패했습니다.</p>`;
+      console.error(error);
+      return;
+    }
+
+    allQuestions = data ?? [];
+    populateFilterOptions();
+    render();
+  }
+
+  ["filter-university", "filter-category"].forEach((id) => $(id).addEventListener("change", render));
+  $("filter-search").addEventListener("input", render);
+  $("filter-reset").addEventListener("click", () => {
+    $<HTMLSelectElement>("filter-university").value = "";
+    $<HTMLSelectElement>("filter-category").value = "";
+    $<HTMLInputElement>("filter-search").value = "";
+    render();
+  });
+
+  load();
+</script>

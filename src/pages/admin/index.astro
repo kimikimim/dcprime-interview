@@ -1,0 +1,377 @@
+---
+import "../../styles/global.css";
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/png" href="/favicon-circle.png" />
+    <title>관리자 - 대치프라임 면접반</title>
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+  <body class="font-sans text-gray-800 bg-gray-50 min-h-screen">
+
+    <!-- 로그인 화면 -->
+    <div id="login-screen" class="flex items-center justify-center min-h-screen px-5">
+      <div class="bg-white rounded-2xl shadow-sm p-10 w-full max-w-sm">
+        <h1 class="text-lg font-bold text-gray-900 mb-1 text-center">관리자 로그인</h1>
+        <p class="text-xs text-gray-400 mb-6 text-center">대치프라임 면접반 학생관리</p>
+        <input id="admin-pw" type="password" placeholder="비밀번호" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm mb-3 focus:outline-none focus:border-brand" />
+        <p id="login-error" class="text-red-500 text-xs mb-3 hidden">비밀번호가 틀렸습니다.</p>
+        <button id="login-btn" class="w-full bg-brand text-white rounded-lg py-3 text-sm font-semibold hover:opacity-90 transition-opacity">로그인</button>
+      </div>
+    </div>
+
+    <!-- 관리자 패널 -->
+    <div id="admin-panel" class="hidden">
+      <div class="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+          <h1 class="text-lg font-bold text-gray-900">대치프라임 면접반 관리자</h1>
+          <nav class="flex items-center gap-1">
+            <span class="px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-light text-brand-dark">학생관리</span>
+          </nav>
+        </div>
+        <button id="logout-btn" class="text-sm text-gray-500 hover:text-gray-900 transition-colors">로그아웃</button>
+      </div>
+
+      <div class="max-w-4xl mx-auto px-4 py-8">
+
+        <!-- 등록/수정 폼 -->
+        <div id="student-form-card" class="bg-white rounded-2xl shadow-sm p-6 mb-6">
+          <h2 id="form-title" class="text-base font-bold text-gray-900 mb-4">학생 등록</h2>
+          <input type="hidden" id="edit-id" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">이름</label>
+              <input id="input-name" type="text" placeholder="홍길동" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">학교</label>
+              <input id="input-school" type="text" placeholder="OO고등학교" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
+            </div>
+            <div>
+              <label class="block text-xs text-gray-500 mb-1">학년</label>
+              <select id="input-grade" class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand">
+                <option value="">선택 안 함</option>
+                <option>고1</option><option>고2</option><option>고3</option><option>N수</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-4">
+            <label id="password-label" class="block text-xs text-gray-500 mb-1">비밀번호</label>
+            <input id="input-password" type="text" placeholder="학생에게 부여할 비밀번호" class="w-full sm:w-1/2 border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-brand" />
+            <p id="password-hint" class="text-xs text-gray-400 mt-1 hidden">비워두면 기존 비밀번호가 유지됩니다.</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button id="submit-btn" class="bg-brand text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:opacity-90 transition-opacity">등록</button>
+            <button id="cancel-edit-btn" class="hidden border border-gray-300 text-gray-600 rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-gray-50 transition-colors">취소</button>
+            <p id="form-msg" class="text-sm text-gray-500 hidden"></p>
+          </div>
+        </div>
+
+        <!-- 필터 -->
+        <div class="bg-white rounded-2xl shadow-sm p-5 mb-4">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="filter-search" type="text" placeholder="이름·학교 검색"
+              class="flex-1 min-w-[160px] border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-brand" />
+            <button id="filter-reset" class="text-xs text-gray-400 hover:text-gray-700 transition-colors px-2">초기화</button>
+          </div>
+          <p id="result-count" class="text-xs text-gray-400 mt-3"></p>
+        </div>
+
+        <!-- 목록 (데스크톱: 표) -->
+        <div class="bg-white rounded-2xl shadow-sm overflow-hidden hidden sm:block">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-gray-100 text-left text-xs text-gray-400">
+                <th class="px-5 py-3 font-medium">이름</th>
+                <th class="px-5 py-3 font-medium">학교</th>
+                <th class="px-5 py-3 font-medium">학년</th>
+                <th class="px-5 py-3 font-medium">등록일</th>
+                <th class="px-5 py-3 font-medium"></th>
+              </tr>
+            </thead>
+            <tbody id="student-table-body" class="divide-y divide-gray-100">
+              <tr><td colspan="5" class="px-5 py-8 text-center text-gray-400">불러오는 중...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 목록 (모바일: 카드) -->
+        <div id="student-card-list" class="sm:hidden space-y-3">
+          <p class="text-sm text-gray-400 py-4 text-center">불러오는 중...</p>
+        </div>
+
+      </div>
+    </div>
+
+    <script>
+      import { supabase } from "../../lib/supabase";
+
+      const SESSION_KEY = "admin_authed";
+
+      type Student = {
+        id: string;
+        name: string;
+        school: string | null;
+        grade: string | null;
+        created_at: string;
+      };
+
+      let allStudents: Student[] = [];
+
+      function $<T extends HTMLElement>(id: string): T {
+        return document.getElementById(id) as T;
+      }
+
+      function isAuthed(): boolean {
+        return sessionStorage.getItem(SESSION_KEY) === "ok";
+      }
+
+      function showPanel() {
+        $("login-screen").classList.add("hidden");
+        $("admin-panel").classList.remove("hidden");
+        loadStudents();
+      }
+
+      function showLogin() {
+        $("login-screen").classList.remove("hidden");
+        $("admin-panel").classList.add("hidden");
+      }
+
+      $("login-btn").addEventListener("click", async () => {
+        const btn = $<HTMLButtonElement>("login-btn");
+        const pw = $<HTMLInputElement>("admin-pw").value;
+        btn.disabled = true;
+        btn.textContent = "확인 중...";
+        const { data, error } = await supabase.rpc("verify_admin_password", { p_pw: pw });
+        btn.disabled = false;
+        btn.textContent = "로그인";
+        if (!error && data === true) {
+          sessionStorage.setItem(SESSION_KEY, "ok");
+          $("login-error").classList.add("hidden");
+          showPanel();
+        } else {
+          $("login-error").classList.remove("hidden");
+        }
+      });
+
+      $("admin-pw").addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter") $<HTMLButtonElement>("login-btn").click();
+      });
+
+      $("logout-btn").addEventListener("click", () => {
+        sessionStorage.removeItem(SESSION_KEY);
+        showLogin();
+      });
+
+      if (isAuthed()) showPanel();
+
+      // ── 목록 로드/렌더 ──
+      async function loadStudents() {
+        const { data, error } = await supabase.rpc("admin_list_students");
+        if (error) {
+          console.error(error);
+          return;
+        }
+        allStudents = data ?? [];
+        render();
+      }
+
+      function getFiltered(): Student[] {
+        const search = $<HTMLInputElement>("filter-search").value.trim().toLowerCase();
+        return allStudents.filter((s) => {
+          if (!search) return true;
+          const haystack = `${s.name} ${s.school ?? ""}`.toLowerCase();
+          return haystack.includes(search);
+        });
+      }
+
+      function escapeHtml(str: string): string {
+        const div = document.createElement("div");
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      function formatDate(iso: string): string {
+        return new Date(iso).toLocaleDateString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit" });
+      }
+
+      function render() {
+        const list = getFiltered();
+        $("result-count").textContent = `총 ${list.length}명`;
+
+        const tbody = $("student-table-body");
+        const cardList = $("student-card-list");
+
+        if (list.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-gray-400">등록된 학생이 없습니다.</td></tr>`;
+          cardList.innerHTML = `<p class="text-sm text-gray-400 py-4 text-center">등록된 학생이 없습니다.</p>`;
+          return;
+        }
+
+        const actions = (id: string) =>
+          `<button data-id="${id}" class="edit-btn text-xs text-brand hover:opacity-70 mr-3">수정</button>
+           <button data-id="${id}" class="reset-pw-btn text-xs text-gray-400 hover:text-gray-700 mr-3">비밀번호 재설정</button>
+           <button data-id="${id}" class="delete-btn text-xs text-red-400 hover:text-red-600">삭제</button>`;
+
+        tbody.innerHTML = list
+          .map(
+            (s) => `
+          <tr class="hover:bg-gray-50">
+            <td class="px-5 py-3 font-medium text-gray-900">${escapeHtml(s.name)}</td>
+            <td class="px-5 py-3 text-gray-600">${escapeHtml(s.school ?? "-")}</td>
+            <td class="px-5 py-3 text-gray-600">${escapeHtml(s.grade ?? "-")}</td>
+            <td class="px-5 py-3 text-gray-400 text-xs">${formatDate(s.created_at)}</td>
+            <td class="px-5 py-3 text-right whitespace-nowrap">${actions(s.id)}</td>
+          </tr>
+        `
+          )
+          .join("");
+
+        cardList.innerHTML = list
+          .map(
+            (s) => `
+          <div class="bg-white rounded-xl shadow-sm p-4">
+            <div class="flex items-center justify-between mb-2">
+              <p class="font-bold text-gray-900">${escapeHtml(s.name)}</p>
+              <div class="flex gap-3">${actions(s.id)}</div>
+            </div>
+            <p class="text-xs text-gray-500">${escapeHtml(s.school ?? "학교 미입력")} · ${escapeHtml(s.grade ?? "학년 미입력")}</p>
+          </div>
+        `
+          )
+          .join("");
+
+        document.querySelectorAll<HTMLButtonElement>(".edit-btn").forEach((btn) =>
+          btn.addEventListener("click", () => startEdit(btn.dataset.id!))
+        );
+        document.querySelectorAll<HTMLButtonElement>(".delete-btn").forEach((btn) =>
+          btn.addEventListener("click", () => deleteStudent(btn.dataset.id!))
+        );
+        document.querySelectorAll<HTMLButtonElement>(".reset-pw-btn").forEach((btn) =>
+          btn.addEventListener("click", () => resetPassword(btn.dataset.id!))
+        );
+      }
+
+      $("filter-search").addEventListener("input", render);
+      $("filter-reset").addEventListener("click", () => {
+        $<HTMLInputElement>("filter-search").value = "";
+        render();
+      });
+
+      // ── 등록/수정 폼 ──
+      function resetForm() {
+        $("edit-id").setAttribute("value", "");
+        $<HTMLInputElement>("input-name").value = "";
+        $<HTMLInputElement>("input-school").value = "";
+        $<HTMLSelectElement>("input-grade").value = "";
+        $<HTMLInputElement>("input-password").value = "";
+        $("password-hint").classList.add("hidden");
+        $("form-title").textContent = "학생 등록";
+        $("submit-btn").textContent = "등록";
+        $("cancel-edit-btn").classList.add("hidden");
+      }
+
+      function startEdit(id: string) {
+        const s = allStudents.find((x) => x.id === id);
+        if (!s) return;
+        $("edit-id").setAttribute("value", s.id);
+        $<HTMLInputElement>("input-name").value = s.name;
+        $<HTMLInputElement>("input-school").value = s.school ?? "";
+        $<HTMLSelectElement>("input-grade").value = s.grade ?? "";
+        $<HTMLInputElement>("input-password").value = "";
+        $("password-hint").classList.remove("hidden");
+        $("form-title").textContent = "학생 정보 수정";
+        $("submit-btn").textContent = "수정 완료";
+        $("cancel-edit-btn").classList.remove("hidden");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      $("cancel-edit-btn").addEventListener("click", resetForm);
+
+      $("submit-btn").addEventListener("click", async () => {
+        if (!isAuthed()) return;
+        const id = $("edit-id").getAttribute("value");
+        const name = $<HTMLInputElement>("input-name").value.trim();
+        const school = $<HTMLInputElement>("input-school").value.trim() || null;
+        const grade = $<HTMLSelectElement>("input-grade").value || null;
+        const password = $<HTMLInputElement>("input-password").value.trim();
+        const msg = $("form-msg");
+
+        if (!name) {
+          msg.textContent = "이름을 입력해주세요.";
+          msg.classList.remove("hidden");
+          return;
+        }
+        if (!id && !password) {
+          msg.textContent = "신규 등록 시 비밀번호는 필수입니다.";
+          msg.classList.remove("hidden");
+          return;
+        }
+
+        const btn = $<HTMLButtonElement>("submit-btn");
+        btn.disabled = true;
+
+        let error;
+        if (id) {
+          ({ error } = await supabase.rpc("admin_update_student", {
+            p_id: id,
+            p_name: name,
+            p_school: school,
+            p_grade: grade,
+          }));
+          if (!error && password) {
+            ({ error } = await supabase.rpc("admin_set_student_password", { p_id: id, p_password: password }));
+          }
+        } else {
+          ({ error } = await supabase.rpc("admin_create_student", {
+            p_name: name,
+            p_school: school,
+            p_grade: grade,
+            p_password: password,
+          }));
+        }
+
+        btn.disabled = false;
+
+        if (error) {
+          msg.textContent = "저장에 실패했습니다: " + error.message;
+          msg.classList.remove("hidden");
+          return;
+        }
+
+        msg.classList.add("hidden");
+        resetForm();
+        loadStudents();
+      });
+
+      async function resetPassword(id: string) {
+        const pw = prompt("새 비밀번호를 입력해주세요.");
+        if (!pw) return;
+        const { error } = await supabase.rpc("admin_set_student_password", { p_id: id, p_password: pw });
+        if (error) {
+          alert("비밀번호 변경에 실패했습니다: " + error.message);
+          return;
+        }
+        alert("비밀번호가 변경되었습니다.");
+      }
+
+      async function deleteStudent(id: string) {
+        if (!isAuthed()) return;
+        if (!confirm("이 학생 정보를 삭제할까요? 삭제 후에는 복구할 수 없습니다.")) return;
+        const { error } = await supabase.rpc("admin_delete_student", { p_id: id });
+        if (error) {
+          alert("삭제에 실패했습니다: " + error.message);
+          return;
+        }
+        loadStudents();
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,119 @@
+---
+import "../styles/global.css";
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/png" href="/favicon-circle.png" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>대치프라임 면접반</title>
+  </head>
+  <body class="font-sans text-gray-800 bg-gray-50 min-h-screen">
+    <div class="flex items-center justify-center min-h-screen px-5">
+      <div class="bg-white rounded-2xl shadow-sm p-10 w-full max-w-sm">
+        <div class="flex flex-col items-center mb-8">
+          <img src="/favicon-circle.png" alt="대치프라임" class="w-12 h-12 rounded-full object-cover mb-3" />
+          <span class="font-bold text-gray-900">DC Prime 면접반</span>
+        </div>
+
+        <!-- 1단계: 사이트 공용 비밀번호 -->
+        <div id="site-gate">
+          <h1 class="text-lg font-bold text-gray-900 mb-1 text-center">비밀번호를 입력하세요</h1>
+          <p class="text-xs text-gray-400 mb-6 text-center">학원에서 안내받은 비밀번호를 입력해주세요</p>
+          <input id="site-pw" type="password" placeholder="비밀번호" inputmode="numeric"
+            class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm mb-3 text-center tracking-widest focus:outline-none focus:border-brand" />
+          <p id="site-error" class="text-red-500 text-xs mb-3 text-center hidden">비밀번호가 틀렸습니다.</p>
+          <button id="site-btn" class="w-full bg-brand text-white rounded-lg py-3 text-sm font-semibold hover:opacity-90 transition-opacity">
+            확인
+          </button>
+        </div>
+
+        <!-- 2단계: 학생 개인 비밀번호 -->
+        <div id="student-gate" class="hidden">
+          <h1 class="text-lg font-bold text-gray-900 mb-1 text-center">학생 확인</h1>
+          <p class="text-xs text-gray-400 mb-6 text-center">본인에게 부여된 비밀번호를 입력해주세요</p>
+          <input id="student-pw" type="password" placeholder="개인 비밀번호" inputmode="numeric"
+            class="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm mb-3 text-center tracking-widest focus:outline-none focus:border-brand" />
+          <p id="student-error" class="text-red-500 text-xs mb-3 text-center hidden">비밀번호가 일치하는 학생이 없습니다.</p>
+          <button id="student-btn" class="w-full bg-brand text-white rounded-lg py-3 text-sm font-semibold hover:opacity-90 transition-opacity">
+            입장하기
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      import { supabase } from "../lib/supabase";
+
+      const SITE_KEY = "site_authed";
+
+      function $<T extends HTMLElement>(id: string): T {
+        return document.getElementById(id) as T;
+      }
+
+      function showStudentGate() {
+        $("site-gate").classList.add("hidden");
+        $("student-gate").classList.remove("hidden");
+        $<HTMLInputElement>("student-pw").focus();
+      }
+
+      // 이미 학생 세션이 있으면 바로 메인으로
+      if (sessionStorage.getItem("student_session")) {
+        window.location.href = "/main";
+      } else if (sessionStorage.getItem(SITE_KEY) === "ok") {
+        showStudentGate();
+      }
+
+      async function submitSitePassword() {
+        const btn = $<HTMLButtonElement>("site-btn");
+        const pw = $<HTMLInputElement>("site-pw").value;
+        if (!pw) return;
+        btn.disabled = true;
+        btn.textContent = "확인 중...";
+        const { data, error } = await supabase.rpc("verify_site_password", { p_pw: pw });
+        btn.disabled = false;
+        btn.textContent = "확인";
+        if (!error && data === true) {
+          sessionStorage.setItem(SITE_KEY, "ok");
+          $("site-error").classList.add("hidden");
+          showStudentGate();
+        } else {
+          $("site-error").classList.remove("hidden");
+        }
+      }
+
+      async function submitStudentPassword() {
+        const btn = $<HTMLButtonElement>("student-btn");
+        const pw = $<HTMLInputElement>("student-pw").value;
+        if (!pw) return;
+        btn.disabled = true;
+        btn.textContent = "확인 중...";
+        const { data, error } = await supabase.rpc("verify_student_login", { p_pw: pw });
+        btn.disabled = false;
+        btn.textContent = "입장하기";
+        if (!error && data && data.length > 0) {
+          sessionStorage.setItem("student_session", JSON.stringify(data[0]));
+          window.location.href = "/main";
+        } else {
+          $("student-error").classList.remove("hidden");
+        }
+      }
+
+      $("site-btn").addEventListener("click", submitSitePassword);
+      $("site-pw").addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter") submitSitePassword();
+      });
+
+      $("student-btn").addEventListener("click", submitStudentPassword);
+      $("student-pw").addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter") submitStudentPassword();
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "name": "dcprime-interview",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "astro dev --host",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.104.0",
+    "@tailwindcss/vite": "4.2.4",
+    "astro": "6.1.8",
+    "tailwindcss": "4.2.4"
+  },
+  "overrides": {
+    "vite": "7.3.2"
+  }
+}
