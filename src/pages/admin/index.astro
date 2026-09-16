@@ -157,8 +157,8 @@ import "../../styles/panel.css";
           <p class="form-hint" id="passwordHint">수정 시 비워두면 기존 비밀번호 유지</p>
         </div>
         <div class="form-group">
-          <label class="form-label">학교</label>
-          <input class="form-input" id="fieldSchool" type="text" placeholder="OO고등학교" maxlength="30" />
+          <label class="form-label">지원 항목 <span class="form-hint" style="display:inline;margin:0">(작성형식: 학교명,전형,학과,면접일)</span></label>
+          <textarea class="form-input" id="fieldSchool" rows="4" style="height:auto;padding:10px 12px;resize:vertical" placeholder="한 줄에 하나씩 입력하세요&#10;예) 서울대학교,지역균형,컴퓨터공학부,2026-11-28&#10;연세대학교,활동우수형,경영학과,2026-12-02"></textarea>
         </div>
 
         <p class="form-error" id="studentFormError"></p>
@@ -502,7 +502,13 @@ import "../../styles/panel.css";
         }
         list.innerHTML = studentsCache
           .map((s) => {
-            const meta = s.school || "학교 미입력";
+            const appLines = (s.school ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+            const meta =
+              appLines.length === 0
+                ? "지원 항목 미입력"
+                : appLines.length === 1
+                ? appLines[0].split(",")[0]?.trim() ?? ""
+                : `${appLines[0].split(",")[0]?.trim() ?? ""} 외 ${appLines.length - 1}건`;
             return `
               <div class="student-mgmt-card">
                 <div class="student-mgmt-avatar">${escapeHtml(s.name.slice(0, 1))}</div>
@@ -706,7 +712,7 @@ import "../../styles/panel.css";
         $("studentModalTitle").textContent = "학생 추가";
         $<HTMLInputElement>("fieldName").value = "";
         $<HTMLInputElement>("fieldPassword").value = "";
-        $<HTMLInputElement>("fieldSchool").value = "";
+        $<HTMLTextAreaElement>("fieldSchool").value = "";
         $("passwordHint").classList.add("hidden");
         $("studentFormError").textContent = "";
         $("studentModal").classList.add("show");
@@ -719,7 +725,7 @@ import "../../styles/panel.css";
         $("studentModalTitle").textContent = "학생 수정";
         $<HTMLInputElement>("fieldName").value = s.name;
         $<HTMLInputElement>("fieldPassword").value = "";
-        $<HTMLInputElement>("fieldSchool").value = s.school ?? "";
+        $<HTMLTextAreaElement>("fieldSchool").value = s.school ?? "";
         $("passwordHint").classList.remove("hidden");
         $("studentFormError").textContent = "";
         $("studentModal").classList.add("show");
@@ -735,7 +741,7 @@ import "../../styles/panel.css";
       $("studentModalSave").addEventListener("click", async () => {
         const name = $<HTMLInputElement>("fieldName").value.trim();
         const password = $<HTMLInputElement>("fieldPassword").value.trim();
-        const school = $<HTMLInputElement>("fieldSchool").value.trim() || null;
+        const school = $<HTMLTextAreaElement>("fieldSchool").value.trim() || null;
         const errorEl = $("studentFormError");
 
         if (!name) {
