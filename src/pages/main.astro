@@ -93,7 +93,30 @@ import "../styles/panel.css";
     <!-- 목표설정 -->
     <div class="tab-panel" id="tabGoalSetting">
       <div class="admin-panel">
-        <p class="empty-text">목표설정은 준비 중입니다.</p>
+        <div class="subtab-row">
+          <button class="subtab-btn active" data-subtab="university">대학목표</button>
+          <button class="subtab-btn" data-subtab="today">오늘의 목표</button>
+        </div>
+
+        <div class="subtab-panel active" id="subtabUniversity">
+          <p class="empty-text">대학목표는 준비 중입니다.</p>
+        </div>
+
+        <div class="subtab-panel" id="subtabToday">
+          <div class="gl-wrap">
+            <div class="gl-date" id="glDate">오늘</div>
+            <div class="gl-progress">
+              <div class="gl-bar"><div class="gl-bar-fill" id="glBarFill"></div></div>
+              <span class="gl-rate" id="glRate">0%</span>
+            </div>
+            <div class="gl-add">
+              <input id="glInput" class="gl-input" type="text" placeholder="오늘 할 일 추가 (예: 문제은행 3개 풀기)" maxlength="100" />
+              <button id="glAddBtn" class="gl-add-btn">추가</button>
+            </div>
+            <div id="glList"></div>
+            <p class="empty-text">아침에 목표를 적고, 완료하면 체크하세요.</p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -176,6 +199,21 @@ import "../styles/panel.css";
       });
       menuBackdrop.addEventListener("click", closeMenu);
       $("hamburgerLogoutBtn").addEventListener("click", () => $("logoutBtn").click());
+
+      // ── 목표설정 서브탭 ──
+      const subtabBtns = document.querySelectorAll<HTMLButtonElement>(".subtab-btn");
+      const subtabPanels: Record<string, HTMLElement> = {
+        university: $("subtabUniversity"),
+        today: $("subtabToday"),
+      };
+      subtabBtns.forEach((b) =>
+        b.addEventListener("click", () => {
+          const t = b.dataset.subtab!;
+          subtabBtns.forEach((x) => x.classList.toggle("active", x.dataset.subtab === t));
+          Object.entries(subtabPanels).forEach(([k, p]) => p.classList.toggle("active", k === t));
+          if (t === "today") loadGoals();
+        })
+      );
 
       // ── 목표: 지원 현황 (샘플 데이터) ──
       // TODO: Phase 2에서 interview.applications 테이블로 교체
@@ -368,6 +406,86 @@ import "../styles/panel.css";
         $<HTMLSelectElement>("filterCategory").value = "";
         $<HTMLInputElement>("filterSearch").value = "";
         renderQuestions();
+      });
+
+      // ── 오늘의 목표 ──
+      function todayStr(): string {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      }
+
+      type Goal = { id: string; text: string; done: boolean };
+
+      async function loadGoals() {
+        const today = todayStr();
+        const d = new Date();
+        $("glDate").textContent = `${today} (${["일", "월", "화", "수", "목", "금", "토"][d.getDay()]})`;
+
+        const { data, error } = await supabase
+          .from("goals")
+          .select("*")
+          .eq("student_id", session.id)
+          .eq("date", today)
+          .order("sort_order")
+          .order("created_at");
+
+        if (error) {
+          $("glList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        renderGoals(data ?? []);
+      }
+
+      function renderGoals(goals: Goal[]) {
+        const list = $("glList");
+        const done = goals.filter((g) => g.done).length;
+        const rate = goals.length ? Math.round((done / goals.length) * 100) : 0;
+        $("glBarFill").style.width = rate + "%";
+        $("glRate").textContent = rate + "%";
+
+        if (!goals.length) {
+          list.innerHTML = `<p class="empty-text">오늘의 목표를 추가해보세요.</p>`;
+          return;
+        }
+
+        list.innerHTML = goals
+          .map(
+            (g) => `
+              <div class="gl-item">
+                <div class="gl-check ${g.done ? "done" : ""}" data-id="${g.id}" data-done="${g.done ? 1 : 0}">${g.done ? "✓" : ""}</div>
+                <span class="gl-text ${g.done ? "done" : ""}">${escapeHtml(g.text)}</span>
+                <button class="gl-del" data-id="${g.id}">삭제</button>
+              </div>
+            `
+          )
+          .join("");
+
+        list.querySelectorAll<HTMLElement>(".gl-check").forEach((c) =>
+          c.addEventListener("click", async () => {
+            await supabase.from("goals").update({ done: c.dataset.done === "0" }).eq("id", c.dataset.id!);
+            loadGoals();
+          })
+        );
+        list.querySelectorAll<HTMLButtonElement>(".gl-del").forEach((b) =>
+          b.addEventListener("click", async () => {
+            await supabase.from("goals").delete().eq("id", b.dataset.id!);
+            loadGoals();
+          })
+        );
+      }
+
+      async function addGoal() {
+        const input = $<HTMLInputElement>("glInput");
+        const text = input.value.trim();
+        if (!text) return;
+        input.value = "";
+        await supabase.from("goals").insert({ student_id: session.id, date: todayStr(), text });
+        loadGoals();
+      }
+      $("glAddBtn").addEventListener("click", addGoal);
+      $("glInput").addEventListener("keydown", (e) => {
+        if ((e as KeyboardEvent).key === "Enter") addGoal();
       });
 
       renderApplications();

@@ -227,6 +227,36 @@ CREATE TRIGGER trg_interview_answers_updated_at
 CREATE INDEX IF NOT EXISTS idx_interview_answers_student ON interview.answers (student_id);
 
 -- ────────────────────────────────────────────
+-- 4-1. 오늘의 목표 (일별 체크리스트, dcprime.10 chat.html의 goals 탭과 동일한 구조)
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.goals (
+  id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  student_id uuid        NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
+  date       date        NOT NULL,
+  text       text        NOT NULL,
+  done       boolean     NOT NULL DEFAULT false,
+  sort_order int         NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.goals ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_goals" ON interview.goals;
+DROP POLICY IF EXISTS "anon insert interview_goals" ON interview.goals;
+DROP POLICY IF EXISTS "anon update interview_goals" ON interview.goals;
+DROP POLICY IF EXISTS "anon delete interview_goals" ON interview.goals;
+
+CREATE POLICY "anon select interview_goals" ON interview.goals
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_goals" ON interview.goals
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_goals" ON interview.goals
+  FOR UPDATE TO anon USING (true);
+CREATE POLICY "anon delete interview_goals" ON interview.goals
+  FOR DELETE TO anon USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_interview_goals_student_date ON interview.goals (student_id, date);
+
+-- ────────────────────────────────────────────
 -- 5. 이미 만들어진 테이블/함수에 대한 권한 재부여
 --    (스크립트를 이미 한 번 실행한 뒤 위의 GRANT/ALTER DEFAULT PRIVILEGES 구문이
 --     새로 추가된 경우, 기존 객체에는 소급 적용되지 않으므로 여기서 명시적으로 다시 부여)
