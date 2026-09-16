@@ -16,7 +16,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA interview GRANT ALL ON SEQUENCES TO anon, aut
 ALTER DEFAULT PRIVILEGES IN SCHEMA interview GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
 
 -- ────────────────────────────────────────────
--- 1. 사이트 공용 비번 / 관리자 비번 설정
+-- 1. 관리자 비번 설정
+--    (사이트 공용 비번 게이트는 제거함 — dcprime.10 원본처럼 PIN 하나로
+--     관리자/학생을 서버에서 판별하는 1단계 로그인 구조로 통일)
 -- ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS interview.config (
   key   text PRIMARY KEY,
@@ -26,18 +28,12 @@ ALTER TABLE interview.config ENABLE ROW LEVEL SECURITY;
 -- 정책 없음 = anon 직접 조회 불가, 아래 verify 함수로만 확인
 
 INSERT INTO interview.config (key, value) VALUES
-  ('site_password', '0000'),
   ('admin_password', '1250')
 ON CONFLICT (key) DO NOTHING;
 
-CREATE OR REPLACE FUNCTION interview.verify_site_password(p_pw text)
-RETURNS boolean
-LANGUAGE plpgsql SECURITY DEFINER AS $$
-BEGIN
-  RETURN EXISTS (SELECT 1 FROM interview.config WHERE key = 'site_password' AND value = p_pw);
-END;
-$$;
-GRANT EXECUTE ON FUNCTION interview.verify_site_password(text) TO anon;
+-- 이미 실행한 적이 있다면 예전 site_password 관련 객체 정리
+DELETE FROM interview.config WHERE key = 'site_password';
+DROP FUNCTION IF EXISTS interview.verify_site_password(text);
 
 CREATE OR REPLACE FUNCTION interview.verify_admin_password(p_pw text)
 RETURNS boolean

@@ -32,14 +32,14 @@ import "../styles/global.css";
           <p id="pin-subtitle" class="text-sm text-gray-400">4자리 번호를 눌러주세요</p>
         </div>
 
-        <div id="pin-display" class="flex gap-4 mb-2.5">
+        <div id="pin-display" class="flex justify-center gap-4 mb-2.5">
           <div class="pin-dot w-3 h-3 rounded-full bg-gray-200 transition-transform"></div>
           <div class="pin-dot w-3 h-3 rounded-full bg-gray-200 transition-transform"></div>
           <div class="pin-dot w-3 h-3 rounded-full bg-gray-200 transition-transform"></div>
           <div class="pin-dot w-3 h-3 rounded-full bg-gray-200 transition-transform"></div>
         </div>
 
-        <p id="error-msg" class="text-xs font-medium text-red-500 h-4 opacity-0 transition-opacity"></p>
+        <p id="error-msg" class="text-xs font-medium text-red-500 h-4 opacity-0 transition-opacity text-center"></p>
 
         <div class="grid grid-cols-3 gap-2 w-full max-w-[320px] mt-auto mx-auto">
           {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((n) => (
@@ -105,7 +105,6 @@ import "../styles/global.css";
       const PIN_LENGTH = 4;
       let pin = "";
       let busy = false;
-      let stage: "site" | "student" = "site";
 
       function $<T extends HTMLElement>(id: string): T {
         return document.getElementById(id) as T;
@@ -117,11 +116,11 @@ import "../styles/global.css";
       const loadingOverlay = $("loading-overlay");
       const loadingText = $("loading-text");
 
-      // 이미 로그인되어 있으면 바로 메인으로
+      // 이미 로그인되어 있으면 바로 이동
       if (sessionStorage.getItem("student_session")) {
         window.location.href = "/main";
-      } else if (sessionStorage.getItem("site_authed") === "ok") {
-        showStudentStage();
+      } else if (sessionStorage.getItem("admin_authed") === "ok") {
+        window.location.href = "/admin";
       }
 
       function updateDots() {
@@ -145,54 +144,34 @@ import "../styles/global.css";
         }, 1400);
       }
 
-      function showStudentStage() {
-        stage = "student";
-        pin = "";
-        updateDots();
-        $("pin-title").innerHTML = "학생 확인";
-        $("pin-subtitle").textContent = "본인 비밀번호 4자리를 눌러주세요";
-      }
-
       async function submit() {
         if (busy) return;
         busy = true;
         loadingText.textContent = "확인 중...";
         loadingOverlay.classList.remove("hidden");
 
-        if (stage === "site") {
-          const { data, error } = await supabase.rpc("verify_site_password", { p_pw: pin });
-          if (!error && data === true) {
-            sessionStorage.setItem("site_authed", "ok");
-            loadingOverlay.classList.add("hidden");
-            showStudentStage();
-          } else {
-            loadingOverlay.classList.add("hidden");
-            showError("비밀번호가 틀렸습니다.");
-          }
-        } else {
-          const { data: isAdmin, error: adminError } = await supabase.rpc("verify_admin_password", { p_pw: pin });
-          if (!adminError && isAdmin === true) {
-            sessionStorage.setItem("admin_authed", "ok");
-            loadingText.textContent = "관리자님, 환영해요!";
-            setTimeout(() => {
-              window.location.href = "/admin";
-            }, 700);
-            return;
-          }
-
-          const { data, error } = await supabase.rpc("verify_student_login", { p_pw: pin });
-          if (!error && data && data.length > 0) {
-            sessionStorage.setItem("student_session", JSON.stringify(data[0]));
-            loadingText.textContent = `${data[0].name}님, 환영해요!`;
-            setTimeout(() => {
-              window.location.href = "/main";
-            }, 700);
-            return;
-          } else {
-            loadingOverlay.classList.add("hidden");
-            showError("일치하는 학생이 없습니다.");
-          }
+        const { data: isAdmin, error: adminError } = await supabase.rpc("verify_admin_password", { p_pw: pin });
+        if (!adminError && isAdmin === true) {
+          sessionStorage.setItem("admin_authed", "ok");
+          loadingText.textContent = "관리자님, 환영해요!";
+          setTimeout(() => {
+            window.location.href = "/admin";
+          }, 700);
+          return;
         }
+
+        const { data, error } = await supabase.rpc("verify_student_login", { p_pw: pin });
+        if (!error && data && data.length > 0) {
+          sessionStorage.setItem("student_session", JSON.stringify(data[0]));
+          loadingText.textContent = `${data[0].name}님, 환영해요!`;
+          setTimeout(() => {
+            window.location.href = "/main";
+          }, 700);
+          return;
+        }
+
+        loadingOverlay.classList.add("hidden");
+        showError("비밀번호가 틀렸습니다.");
         busy = false;
       }
 
