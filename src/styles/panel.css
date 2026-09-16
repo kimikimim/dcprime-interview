@@ -1,0 +1,152 @@
+/* dcprime.10(텐투텐) 관리자/학생 패널과 동일한 톤의 공용 스타일
+   admin/index.astro, main.astro(학생 허브)에서 공유해서 사용 */
+
+:root {
+  --blue: #0064FF;
+  --blue-hover: #0050CC;
+  --blue-light: #EBF3FF;
+  --black: #191F28;
+  --gray-1: #333D4B;
+  --gray-2: #4E5968;
+  --gray-3: #8B95A1;
+  --gray-4: #B0B8C1;
+  --gray-5: #D1D6DB;
+  --gray-6: #E5E8EB;
+  --gray-7: #F2F4F6;
+  --gray-8: #F7F8FA;
+  --red: #F04452;
+  --r-sm: 8px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.10);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,.14);
+}
+
+.admin-body { display: flex; flex-direction: column; min-height: 100dvh; background: var(--gray-8); }
+
+.admin-header { background: #fff; border-bottom: 1px solid var(--gray-6); padding: env(safe-area-inset-top) 0 0; flex-shrink: 0; position: sticky; top: 0; z-index: 150; }
+.admin-header-inner { display: flex; align-items: center; justify-content: space-between; height: 56px; padding: 0 18px; }
+.admin-header-left { display: flex; align-items: center; gap: 9px; }
+.admin-title-text { font-size: 15px; font-weight: 700; color: var(--black); letter-spacing: -.2px; }
+.admin-header-right { display: flex; align-items: center; gap: 2px; }
+.admin-badge { display: inline-block; padding: 2px 8px; background: linear-gradient(135deg,var(--blue),#5B9FFF); color: white; border-radius: 20px; font-size: 11px; font-weight: 700; margin-left: 6px; }
+.icon-btn { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--gray-2); background: none; border: none; cursor: pointer; transition: background .15s; }
+.icon-btn:hover { background: var(--gray-7); }
+
+/* 헤더 왼쪽 2줄 표시 (이름 + 학교/학년 등 메타) */
+.header-name { font-size: 15px; font-weight: 700; color: var(--black); letter-spacing: -.2px; }
+.header-meta { font-size: 11px; color: var(--gray-3); margin-top: 1px; }
+
+.tab-bar { display: flex; border-top: 1px solid var(--gray-7); }
+.tab-btn { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; height: 44px; font-size: 13px; font-weight: 500; color: var(--gray-3); border-bottom: 2px solid transparent; background: none; border-left: none; border-right: none; border-top: none; transition: color .2s, border-color .2s; white-space: nowrap; cursor: pointer; }
+.tab-btn.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 700; }
+.tab-btn svg { flex-shrink: 0; }
+
+.hamburger-btn { display: none; width: 36px; height: 36px; border-radius: 50%; align-items: center; justify-content: center; color: var(--gray-2); background: none; border: none; cursor: pointer; }
+.hamburger-btn:active { background: var(--gray-6); }
+.tab-bar-logout { display: none; }
+
+@media (max-width: 767px) {
+  .admin-header-inner { position: relative; }
+  .hamburger-btn { display: flex; }
+  .tab-bar { display: none; }
+
+  .menu-backdrop.show { display: block; position: fixed; inset: 0; background: transparent; z-index: 100; }
+
+  .tab-bar.open {
+    display: flex; flex-direction: column;
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 78%; max-width: 280px;
+    background: white;
+    border-top: none;
+    z-index: 101;
+    padding: calc(56px + env(safe-area-inset-top)) 0 12px;
+    box-shadow: -6px 0 20px rgba(0,0,0,.18);
+    animation: drawerSlideIn .2s ease;
+    overflow-y: auto;
+  }
+  .tab-bar.open .tab-btn { flex: none; background: white; height: 52px; justify-content: flex-start; padding: 0 24px; gap: 26px; font-size: 15px; font-weight: 500; color: var(--black); border: none; }
+  .tab-bar.open .tab-btn svg { width: 20px; height: 20px; color: var(--gray-3); flex-shrink: 0; }
+  .tab-bar.open .tab-btn.active { color: var(--blue); font-weight: 700; }
+  .tab-bar.open .tab-btn.active svg { color: var(--blue); }
+  .tab-bar.open .tab-bar-logout {
+    display: flex; align-items: center; gap: 26px;
+    height: 52px; padding: 0 24px; margin-top: 12px;
+    font-size: 15px; font-weight: 500; color: var(--black);
+    border: none; border-top: 1px solid var(--gray-7); background: none;
+    width: 100%; text-align: left; cursor: pointer;
+  }
+}
+@keyframes drawerSlideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+.tab-panel { display: none; flex: 1; }
+.tab-panel.active { display: flex; flex-direction: column; }
+
+.admin-panel { padding: 16px; max-width: 900px; margin: 0 auto; width: 100%; }
+@media (min-width: 768px) { .admin-panel { padding: 28px 24px; } }
+
+.panel-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; gap: 10px; flex-wrap: wrap; }
+.section-subtitle { font-size: 14px; font-weight: 700; color: var(--black); }
+.btn-primary-sm { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 700; color: white; background: var(--blue); border: none; cursor: pointer; transition: background .15s; display: flex; align-items: center; gap: 5px; }
+.btn-primary-sm:hover { background: var(--blue-hover); }
+
+.empty-text { font-size: 13px; color: var(--gray-4); text-align: center; padding: 24px 0; }
+
+.student-mgmt-list { display: flex; flex-direction: column; gap: 10px; }
+.student-mgmt-card { background: white; border-radius: var(--r-md); padding: 16px 18px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow-sm); transition: box-shadow .15s; }
+.student-mgmt-card:hover { box-shadow: var(--shadow-md); }
+.student-mgmt-avatar { width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0; background: linear-gradient(135deg, var(--blue), #5B9FFF); display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; color: white; }
+.student-mgmt-info { flex: 1; min-width: 0; }
+.student-mgmt-name { font-size: 15px; font-weight: 700; color: var(--black); }
+.student-mgmt-meta { font-size: 12px; color: var(--gray-3); margin-top: 2px; }
+.student-mgmt-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.btn-edit { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-light); border: 1px solid #C2D9FF; cursor: pointer; transition: background .15s; }
+.btn-edit:hover { background: #D6E9FF; }
+.btn-delete { height: 32px; padding: 0 14px; border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--red); background: #FEE8EA; border: 1px solid #FCC; cursor: pointer; transition: background .15s; }
+.btn-delete:hover { background: #FDD; }
+
+/* 카드형 목록 (지원현황, 문제은행 등에서 재사용) */
+.card { background: white; border-radius: var(--r-md); padding: 16px 18px; box-shadow: var(--shadow-sm); transition: box-shadow .15s; }
+.card:hover { box-shadow: var(--shadow-md); }
+.tag-pill { display: inline-block; padding: 3px 10px; background: var(--blue-light); color: var(--blue); border-radius: 999px; font-size: 11px; font-weight: 700; }
+.tag-pill--muted { background: var(--gray-7); color: var(--gray-3); }
+.tag-pill--danger { background: #FEE8EA; color: var(--red); }
+
+.filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.filter-row .form-input { width: auto; }
+.filter-row .form-input[data-flex] { flex: 1; min-width: 160px; }
+.filter-reset { font-size: 12px; color: var(--gray-4); background: none; border: none; cursor: pointer; padding: 0 4px; }
+.filter-reset:hover { color: var(--gray-1); }
+.result-count { font-size: 12px; color: var(--gray-4); margin-bottom: 10px; }
+
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: none; align-items: flex-end; justify-content: center; z-index: 200; padding-bottom: env(safe-area-inset-bottom); backdrop-filter: blur(2px); }
+.modal-overlay.show { display: flex; animation: fadeIn .2s ease; }
+.modal { background: white; border-radius: var(--r-xl) var(--r-xl) 0 0; padding: 28px 22px 22px; width: 100%; max-width: 480px; text-align: center; animation: slideUp .28s cubic-bezier(.34,1.56,.64,1); }
+.modal-title { font-size: 18px; font-weight: 800; color: var(--black); margin-bottom: 8px; }
+.modal-desc { font-size: 13px; color: var(--gray-3); line-height: 1.7; margin-bottom: 22px; }
+.modal-actions { display: flex; gap: 8px; }
+.modal-btn { flex: 1; height: 50px; border-radius: var(--r-md); font-size: 15px; font-weight: 700; border: none; cursor: pointer; transition: all .15s; }
+.modal-btn--cancel { background: var(--gray-7); color: var(--gray-2); }
+.modal-btn--cancel:hover { background: var(--gray-6); }
+.modal-btn--confirm { background: var(--red); color: white; }
+.modal-btn--confirm:hover { background: #D63040; }
+.modal-btn--save { background: var(--blue); color: white; }
+.modal-btn--save:hover { background: var(--blue-hover); }
+.modal-btn:active { transform: scale(.97); }
+
+.modal--form { padding: 28px 22px 22px; text-align: left; }
+.modal--form .modal-title { text-align: left; margin-bottom: 20px; }
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 13px; font-weight: 600; color: var(--gray-2); margin-bottom: 6px; }
+.form-required { color: var(--blue); }
+.form-hint { font-size: 11px; color: var(--gray-4); margin-top: 4px; }
+.form-input { width: 100%; height: 44px; padding: 0 12px; border-radius: var(--r-sm); border: 1.5px solid var(--gray-6); background: var(--gray-8); font-size: 14px; color: var(--black); transition: border-color .2s; font-family: inherit; }
+.form-input:focus { border-color: var(--blue); background: white; outline: none; }
+.form-error { font-size: 13px; color: var(--red); min-height: 18px; margin-bottom: 12px; }
+
+@media (min-width: 768px) {
+  .modal-overlay { align-items: center; }
+  .modal { border-radius: var(--r-xl); }
+}
+
+@keyframes fadeIn { from{opacity:0} to{opacity:1} }
+@keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
