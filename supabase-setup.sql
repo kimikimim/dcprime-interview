@@ -331,6 +331,33 @@ CREATE TRIGGER trg_interview_custom_answers_updated_at
   FOR EACH ROW EXECUTE FUNCTION interview.custom_answers_set_updated_at();
 
 -- ────────────────────────────────────────────
+-- 4-3. 일정 관리 (주간 캘린더 — 면접 수업 일정)
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.schedule_events (
+  id         uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  title      text        NOT NULL,
+  event_date date        NOT NULL,
+  start_time time        NOT NULL,
+  end_time   time        NOT NULL,
+  notes      text        NOT NULL DEFAULT '',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.schedule_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_schedule_events" ON interview.schedule_events;
+DROP POLICY IF EXISTS "anon insert interview_schedule_events" ON interview.schedule_events;
+DROP POLICY IF EXISTS "anon delete interview_schedule_events" ON interview.schedule_events;
+
+CREATE POLICY "anon select interview_schedule_events" ON interview.schedule_events
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_schedule_events" ON interview.schedule_events
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon delete interview_schedule_events" ON interview.schedule_events
+  FOR DELETE TO anon USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_interview_schedule_events_date ON interview.schedule_events (event_date);
+
+-- ────────────────────────────────────────────
 -- 5. 이미 만들어진 테이블/함수에 대한 권한 재부여
 --    (스크립트를 이미 한 번 실행한 뒤 위의 GRANT/ALTER DEFAULT PRIVILEGES 구문이
 --     새로 추가된 경우, 기존 객체에는 소급 적용되지 않으므로 여기서 명시적으로 다시 부여)
