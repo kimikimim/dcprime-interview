@@ -8,6 +8,13 @@
 CREATE SCHEMA IF NOT EXISTS interview;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 
+-- public 스키마와 달리 새 스키마는 anon/authenticated에게 USAGE가 자동으로 주어지지 않음
+-- (RLS 정책과는 별개로 스키마/테이블/함수 자체에 대한 권한을 명시적으로 열어줘야 함)
+GRANT USAGE ON SCHEMA interview TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA interview GRANT ALL ON TABLES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA interview GRANT ALL ON SEQUENCES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA interview GRANT EXECUTE ON FUNCTIONS TO anon, authenticated;
+
 -- ────────────────────────────────────────────
 -- 1. 사이트 공용 비번 / 관리자 비번 설정
 -- ────────────────────────────────────────────
@@ -177,3 +184,14 @@ SELECT * FROM (VALUES
   ('고려대학교', '심리학과', '학업우수형', '인성', '자기소개서에 기재한 활동 중 가장 의미 있었던 활동은 무엇인가요.')
 ) AS v(university, department, track, category, question_text)
 WHERE NOT EXISTS (SELECT 1 FROM interview.questions);
+
+-- ────────────────────────────────────────────
+-- 4. 이미 만들어진 테이블/함수에 대한 권한 재부여
+--    (스크립트를 이미 한 번 실행한 뒤 위의 GRANT/ALTER DEFAULT PRIVILEGES 구문이
+--     새로 추가된 경우, 기존 객체에는 소급 적용되지 않으므로 여기서 명시적으로 다시 부여)
+-- ────────────────────────────────────────────
+GRANT ALL ON ALL TABLES IN SCHEMA interview TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA interview TO anon, authenticated;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA interview TO anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';
