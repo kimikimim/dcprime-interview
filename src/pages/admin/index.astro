@@ -49,6 +49,10 @@ import "../../styles/panel.css";
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M19 5v6M16 8h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           학생 관리
         </button>
+        <button class="tab-btn" data-tab="authoring">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          문제출제
+        </button>
         <button class="tab-bar-logout" id="hamburgerLogoutBtn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           로그아웃
@@ -82,6 +86,44 @@ import "../../styles/panel.css";
         </div>
         <div class="student-mgmt-list" id="studentMgmtList">
           <p class="empty-text">학생 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 문제출제 -->
+    <div class="tab-panel" id="tabAuthoring">
+      <div class="admin-panel">
+        <div class="subtab-row">
+          <button class="subtab-btn active" data-subtab="common">공통 질문</button>
+          <button class="subtab-btn" data-subtab="individual">개별 질문</button>
+        </div>
+
+        <!-- 공통 질문 -->
+        <div class="subtab-panel active" id="subtabCommon">
+          <div class="card" style="margin-bottom:16px">
+            <p class="form-label">질문 내용</p>
+            <textarea class="form-input" id="commonQuestionInput" rows="3" placeholder="모든 학생에게 보여줄 질문을 입력하세요" style="height:auto;padding:10px 12px;resize:vertical"></textarea>
+            <button class="btn-primary-sm" id="commonQuestionSubmit" style="margin-top:10px">등록 (전체 공개)</button>
+          </div>
+          <div id="commonQuestionList" style="display:flex;flex-direction:column;gap:10px">
+            <p class="empty-text">불러오는 중...</p>
+          </div>
+        </div>
+
+        <!-- 개별 질문 -->
+        <div class="subtab-panel" id="subtabIndividual">
+          <div class="card" style="margin-bottom:16px">
+            <p class="form-label">질문 내용</p>
+            <textarea class="form-input" id="individualQuestionInput" rows="3" placeholder="선택한 학생에게만 보여줄 질문을 입력하세요" style="height:auto;padding:10px 12px;resize:vertical;margin-bottom:12px"></textarea>
+            <p class="form-label">대상 학생 (여러 명 선택 가능)</p>
+            <div class="student-picker" id="individualStudentPicker">
+              <p class="empty-text">학생 목록을 불러오는 중...</p>
+            </div>
+            <button class="btn-primary-sm" id="individualQuestionSubmit" style="margin-top:12px">등록 (선택한 학생에게만)</button>
+          </div>
+          <div id="individualQuestionList" style="display:flex;flex-direction:column;gap:10px">
+            <p class="empty-text">불러오는 중...</p>
+          </div>
         </div>
       </div>
     </div>
@@ -163,6 +205,7 @@ import "../../styles/panel.css";
         schedule: $("tabSchedule"),
         study: $("tabStudy"),
         students: $("tabStudents"),
+        authoring: $("tabAuthoring"),
       };
       const tabBar = document.querySelector<HTMLElement>(".tab-bar")!;
       const menuBackdrop = document.createElement("div");
@@ -229,7 +272,178 @@ import "../../styles/panel.css";
         list.querySelectorAll<HTMLButtonElement>(".btn-delete").forEach((btn) =>
           btn.addEventListener("click", () => openDeleteModal(btn.dataset.id!))
         );
+
+        renderStudentPicker();
       }
+
+      // ── 문제출제: 공통 질문 / 개별 질문 서브탭 ──
+      const authoringSubtabBtns = document.querySelectorAll<HTMLButtonElement>("#tabAuthoring .subtab-btn");
+      const authoringSubtabPanels: Record<string, HTMLElement> = {
+        common: $("subtabCommon"),
+        individual: $("subtabIndividual"),
+      };
+      authoringSubtabBtns.forEach((b) =>
+        b.addEventListener("click", () => {
+          const t = b.dataset.subtab!;
+          authoringSubtabBtns.forEach((x) => x.classList.toggle("active", x.dataset.subtab === t));
+          Object.entries(authoringSubtabPanels).forEach(([k, p]) => p.classList.toggle("active", k === t));
+        })
+      );
+
+      // ── 문제출제: 개별 질문 대상 학생 선택 (중복 선택 가능) ──
+      let selectedStudentIds = new Set<string>();
+
+      function renderStudentPicker() {
+        const picker = $("individualStudentPicker");
+        if (studentsCache.length === 0) {
+          picker.innerHTML = `<p class="empty-text">등록된 학생이 없습니다.</p>`;
+          return;
+        }
+        picker.innerHTML = studentsCache
+          .map(
+            (s) => `
+              <button type="button" class="student-toggle ${selectedStudentIds.has(s.id) ? "selected" : ""}" data-id="${s.id}">
+                ${escapeHtml(s.name)}
+              </button>
+            `
+          )
+          .join("");
+        picker.querySelectorAll<HTMLButtonElement>(".student-toggle").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.id!;
+            if (selectedStudentIds.has(id)) selectedStudentIds.delete(id);
+            else selectedStudentIds.add(id);
+            btn.classList.toggle("selected");
+          })
+        );
+      }
+
+      // ── 문제출제: 공통 질문 ──
+      async function loadCommonQuestions() {
+        const { data, error } = await supabase
+          .from("custom_questions")
+          .select("*")
+          .eq("visibility", "common")
+          .order("created_at", { ascending: false });
+        const list = $("commonQuestionList");
+        if (error) {
+          list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        if (!data || data.length === 0) {
+          list.innerHTML = `<p class="empty-text">등록된 공통 질문이 없습니다.</p>`;
+          return;
+        }
+        list.innerHTML = data
+          .map(
+            (q: any) => `
+              <div class="card" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+                <p style="font-size:14px;color:var(--black);line-height:1.6">${escapeHtml(q.question_text)}</p>
+                <button class="btn-delete delete-common-question" data-id="${q.id}" style="flex-shrink:0">삭제</button>
+              </div>
+            `
+          )
+          .join("");
+        list.querySelectorAll<HTMLButtonElement>(".delete-common-question").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            await supabase.from("custom_questions").delete().eq("id", btn.dataset.id!);
+            loadCommonQuestions();
+          })
+        );
+      }
+
+      $("commonQuestionSubmit").addEventListener("click", async () => {
+        const input = $<HTMLTextAreaElement>("commonQuestionInput");
+        const text = input.value.trim();
+        if (!text) return;
+        const { error } = await supabase.from("custom_questions").insert({ question_text: text, visibility: "common" });
+        if (error) {
+          alert("등록에 실패했습니다: " + error.message);
+          return;
+        }
+        input.value = "";
+        loadCommonQuestions();
+      });
+
+      // ── 문제출제: 개별 질문 ──
+      async function loadIndividualQuestions() {
+        const { data, error } = await supabase
+          .from("custom_questions")
+          .select("*, custom_question_targets(student_id)")
+          .eq("visibility", "individual")
+          .order("created_at", { ascending: false });
+        const list = $("individualQuestionList");
+        if (error) {
+          list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        if (!data || data.length === 0) {
+          list.innerHTML = `<p class="empty-text">등록된 개별 질문이 없습니다.</p>`;
+          return;
+        }
+        list.innerHTML = data
+          .map((q: any) => {
+            const targetIds: string[] = (q.custom_question_targets ?? []).map((t: any) => t.student_id);
+            const names = targetIds
+              .map((id) => studentsCache.find((s) => s.id === id)?.name)
+              .filter(Boolean)
+              .join(", ") || "대상 없음";
+            return `
+              <div class="card">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px">
+                  <p style="font-size:14px;color:var(--black);line-height:1.6">${escapeHtml(q.question_text)}</p>
+                  <button class="btn-delete delete-individual-question" data-id="${q.id}" style="flex-shrink:0">삭제</button>
+                </div>
+                <p class="student-mgmt-meta">대상: ${escapeHtml(names)}</p>
+              </div>
+            `;
+          })
+          .join("");
+        list.querySelectorAll<HTMLButtonElement>(".delete-individual-question").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            await supabase.from("custom_questions").delete().eq("id", btn.dataset.id!);
+            loadIndividualQuestions();
+          })
+        );
+      }
+
+      $("individualQuestionSubmit").addEventListener("click", async () => {
+        const input = $<HTMLTextAreaElement>("individualQuestionInput");
+        const text = input.value.trim();
+        if (!text) {
+          alert("질문 내용을 입력해주세요.");
+          return;
+        }
+        if (selectedStudentIds.size === 0) {
+          alert("대상 학생을 한 명 이상 선택해주세요.");
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("custom_questions")
+          .insert({ question_text: text, visibility: "individual" })
+          .select()
+          .single();
+
+        if (error || !data) {
+          alert("등록에 실패했습니다: " + error?.message);
+          return;
+        }
+
+        const targets = [...selectedStudentIds].map((student_id) => ({ custom_question_id: data.id, student_id }));
+        const { error: targetError } = await supabase.from("custom_question_targets").insert(targets);
+        if (targetError) {
+          alert("대상 학생 지정에 실패했습니다: " + targetError.message);
+          return;
+        }
+
+        input.value = "";
+        selectedStudentIds.clear();
+        renderStudentPicker();
+        loadIndividualQuestions();
+      });
 
       // ── 추가/수정 모달 ──
       let editingId: string | null = null;
@@ -334,6 +548,8 @@ import "../../styles/panel.css";
       });
 
       loadStudents();
+      loadCommonQuestions();
+      loadIndividualQuestions();
     </script>
   </body>
 </html>

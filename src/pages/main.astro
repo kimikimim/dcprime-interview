@@ -79,43 +79,42 @@ import "../styles/panel.css";
     <!-- 공통 질문 -->
     <div class="tab-panel" id="tabCommon">
       <div class="admin-panel">
-        <p class="empty-text">공통 질문은 준비 중입니다.</p>
+        <div class="panel-toolbar">
+          <h2 class="section-subtitle" style="margin:0">공통 질문</h2>
+        </div>
+        <div id="commonQuestionList" style="display:flex;flex-direction:column;gap:10px">
+          <p class="empty-text">불러오는 중...</p>
+        </div>
       </div>
     </div>
 
     <!-- 개별 질문 -->
     <div class="tab-panel" id="tabPersonal">
       <div class="admin-panel">
-        <p class="empty-text">개별 질문은 준비 중입니다.</p>
+        <div class="panel-toolbar">
+          <h2 class="section-subtitle" style="margin:0">개별 질문</h2>
+        </div>
+        <div id="personalQuestionList" style="display:flex;flex-direction:column;gap:10px">
+          <p class="empty-text">불러오는 중...</p>
+        </div>
       </div>
     </div>
 
-    <!-- 목표설정 -->
+    <!-- 목표설정 (오늘의 목표) -->
     <div class="tab-panel" id="tabGoalSetting">
       <div class="admin-panel">
-        <div class="subtab-row">
-          <button class="subtab-btn active" data-subtab="university">대학목표</button>
-          <button class="subtab-btn" data-subtab="today">오늘의 목표</button>
-        </div>
-
-        <div class="subtab-panel active" id="subtabUniversity">
-          <p class="empty-text">대학목표는 준비 중입니다.</p>
-        </div>
-
-        <div class="subtab-panel" id="subtabToday">
-          <div class="gl-wrap">
-            <div class="gl-date" id="glDate">오늘</div>
-            <div class="gl-progress">
-              <div class="gl-bar"><div class="gl-bar-fill" id="glBarFill"></div></div>
-              <span class="gl-rate" id="glRate">0%</span>
-            </div>
-            <div class="gl-add">
-              <input id="glInput" class="gl-input" type="text" placeholder="오늘 할 일 추가 (예: 문제은행 3개 풀기)" maxlength="100" />
-              <button id="glAddBtn" class="gl-add-btn">추가</button>
-            </div>
-            <div id="glList"></div>
-            <p class="empty-text">아침에 목표를 적고, 완료하면 체크하세요.</p>
+        <div class="gl-wrap">
+          <div class="gl-date" id="glDate">오늘</div>
+          <div class="gl-progress">
+            <div class="gl-bar"><div class="gl-bar-fill" id="glBarFill"></div></div>
+            <span class="gl-rate" id="glRate">0%</span>
           </div>
+          <div class="gl-add">
+            <input id="glInput" class="gl-input" type="text" placeholder="오늘 할 일 추가 (예: 문제은행 3개 풀기)" maxlength="100" />
+            <button id="glAddBtn" class="gl-add-btn">추가</button>
+          </div>
+          <div id="glList"></div>
+          <p class="empty-text">아침에 목표를 적고, 완료하면 체크하세요.</p>
         </div>
       </div>
     </div>
@@ -199,21 +198,6 @@ import "../styles/panel.css";
       });
       menuBackdrop.addEventListener("click", closeMenu);
       $("hamburgerLogoutBtn").addEventListener("click", () => $("logoutBtn").click());
-
-      // ── 목표설정 서브탭 ──
-      const subtabBtns = document.querySelectorAll<HTMLButtonElement>(".subtab-btn");
-      const subtabPanels: Record<string, HTMLElement> = {
-        university: $("subtabUniversity"),
-        today: $("subtabToday"),
-      };
-      subtabBtns.forEach((b) =>
-        b.addEventListener("click", () => {
-          const t = b.dataset.subtab!;
-          subtabBtns.forEach((x) => x.classList.toggle("active", x.dataset.subtab === t));
-          Object.entries(subtabPanels).forEach(([k, p]) => p.classList.toggle("active", k === t));
-          if (t === "today") loadGoals();
-        })
-      );
 
       // ── 목표: 지원 현황 (샘플 데이터) ──
       // TODO: Phase 2에서 interview.applications 테이블로 교체
@@ -384,6 +368,105 @@ import "../styles/panel.css";
         setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
       }
 
+      // ── 공통 질문 / 개별 질문 (관리자가 문제출제에서 등록) ──
+      type CustomQuestion = { id: string; question_text: string };
+      let myCustomAnswers: Record<string, string> = {};
+
+      async function loadCustomAnswers() {
+        const { data, error } = await supabase.from("custom_answers").select("custom_question_id, answer_text").eq("student_id", session.id);
+        if (error) {
+          console.error(error);
+          return;
+        }
+        myCustomAnswers = Object.fromEntries((data ?? []).map((a: any) => [a.custom_question_id, a.answer_text]));
+      }
+
+      function renderCustomQuestionList(containerId: string, questions: CustomQuestion[], emptyMessage: string) {
+        const list = $(containerId);
+        if (questions.length === 0) {
+          list.innerHTML = `<p class="empty-text">${emptyMessage}</p>`;
+          return;
+        }
+        list.innerHTML = questions
+          .map(
+            (q) => `
+              <div class="card">
+                <p style="font-size:14px;color:var(--black);line-height:1.6;margin-bottom:12px">${escapeHtml(q.question_text)}</p>
+                <textarea class="form-input custom-answer-input" data-question-id="${q.id}" rows="3"
+                  placeholder="이 질문에 대한 나만의 답변을 적어보세요"
+                  style="height:auto;padding:10px 12px;resize:vertical;line-height:1.5">${escapeHtml(myCustomAnswers[q.id] ?? "")}</textarea>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+                  <button class="btn-primary-sm save-custom-answer-btn" data-question-id="${q.id}">답변 저장</button>
+                  <span class="custom-answer-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
+                </div>
+              </div>
+            `
+          )
+          .join("");
+
+        list.querySelectorAll<HTMLButtonElement>(".save-custom-answer-btn").forEach((btn) =>
+          btn.addEventListener("click", () => saveCustomAnswer(btn.dataset.questionId!))
+        );
+      }
+
+      async function saveCustomAnswer(questionId: string) {
+        const textarea = document.querySelector<HTMLTextAreaElement>(`.custom-answer-input[data-question-id="${questionId}"]`)!;
+        const statusEl = document.querySelector<HTMLElement>(`.custom-answer-status[data-question-id="${questionId}"]`)!;
+        const btn = document.querySelector<HTMLButtonElement>(`.save-custom-answer-btn[data-question-id="${questionId}"]`)!;
+        const answerText = textarea.value.trim();
+
+        btn.disabled = true;
+        statusEl.textContent = "저장 중...";
+
+        const { error } = await supabase
+          .from("custom_answers")
+          .upsert({ student_id: session.id, custom_question_id: questionId, answer_text: answerText }, { onConflict: "student_id,custom_question_id" });
+
+        btn.disabled = false;
+
+        if (error) {
+          statusEl.textContent = "저장 실패";
+          console.error(error);
+          return;
+        }
+        myCustomAnswers[questionId] = answerText;
+        statusEl.textContent = "저장됨 ✓";
+        setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
+      }
+
+      async function loadCommonQuestions() {
+        await loadCustomAnswers();
+        const { data, error } = await supabase
+          .from("custom_questions")
+          .select("*")
+          .eq("visibility", "common")
+          .order("created_at", { ascending: false });
+        if (error) {
+          $("commonQuestionList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        renderCustomQuestionList("commonQuestionList", data ?? [], "등록된 공통 질문이 없습니다.");
+      }
+
+      async function loadPersonalQuestions() {
+        await loadCustomAnswers();
+        const { data, error } = await supabase
+          .from("custom_question_targets")
+          .select("custom_questions(id, question_text, created_at)")
+          .eq("student_id", session.id);
+        if (error) {
+          $("personalQuestionList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        const questions = (data ?? [])
+          .map((row: any) => row.custom_questions)
+          .filter(Boolean)
+          .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+        renderCustomQuestionList("personalQuestionList", questions, "등록된 개별 질문이 없습니다.");
+      }
+
       async function loadQuestions() {
         const [{ data, error }] = await Promise.all([
           supabase.from("questions").select("*").order("university", { ascending: true }),
@@ -490,6 +573,9 @@ import "../styles/panel.css";
 
       renderApplications();
       loadQuestions();
+      loadGoals();
+      loadCommonQuestions();
+      loadPersonalQuestions();
     </script>
   </body>
 </html>

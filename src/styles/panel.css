@@ -48,6 +48,7 @@
 @media (max-width: 767px) {
   .admin-header-inner { position: relative; }
   .hamburger-btn { display: flex; }
+  .admin-header-right #logoutBtn { display: none; }
   .tab-bar { display: none; }
 
   .menu-backdrop.show { display: block; position: fixed; inset: 0; background: transparent; z-index: 100; }
@@ -151,12 +152,17 @@
 @keyframes fadeIn { from{opacity:0} to{opacity:1} }
 @keyframes slideUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
 
-/* 패널 안에서 하위 항목을 나누는 서브탭 (예: 목표설정 > 대학목표 / 오늘의 목표) */
+/* 패널 안에서 하위 항목을 나누는 서브탭 (예: 문제출제 > 공통 질문 / 개별 질문) */
 .subtab-row { display: flex; gap: 6px; margin-bottom: 18px; }
 .subtab-btn { padding: 8px 16px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--gray-3); background: var(--gray-7); border: none; cursor: pointer; transition: all .15s; }
 .subtab-btn.active { color: white; background: var(--blue); }
 .subtab-panel { display: none; }
 .subtab-panel.active { display: block; }
+
+/* 학생 다중 선택 (개별 질문 대상 지정) */
+.student-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+.student-toggle { padding: 7px 14px; border-radius: 999px; font-size: 13px; font-weight: 600; border: 1.5px solid var(--gray-6); background: var(--gray-8); color: var(--gray-2); cursor: pointer; transition: all .15s; }
+.student-toggle.selected { background: var(--blue); border-color: var(--blue); color: white; }
 
 /* 오늘의 목표 (dcprime.10 chat.html .gl-* 그대로 이식) */
 .gl-wrap { max-width: 560px; margin: 0 auto; width: 100%; }

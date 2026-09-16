@@ -257,6 +257,84 @@ CREATE POLICY "anon delete interview_goals" ON interview.goals
 CREATE INDEX IF NOT EXISTS idx_interview_goals_student_date ON interview.goals (student_id, date);
 
 -- ────────────────────────────────────────────
+-- 4-2. 관리자 문제출제 (공통 질문 / 개별 질문)
+--    공통 질문: visibility='common' — 전체 학생에게 노출
+--    개별 질문: visibility='individual' — custom_question_targets에 매칭되는 학생에게만 노출
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.custom_questions (
+  id            uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  question_text text        NOT NULL,
+  visibility    text        NOT NULL CHECK (visibility IN ('common', 'individual')),
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.custom_questions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_custom_questions" ON interview.custom_questions;
+DROP POLICY IF EXISTS "anon insert interview_custom_questions" ON interview.custom_questions;
+DROP POLICY IF EXISTS "anon delete interview_custom_questions" ON interview.custom_questions;
+
+CREATE POLICY "anon select interview_custom_questions" ON interview.custom_questions
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_custom_questions" ON interview.custom_questions
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon delete interview_custom_questions" ON interview.custom_questions
+  FOR DELETE TO anon USING (true);
+
+-- 개별 질문의 대상 학생 (한 질문에 여러 학생 중복 지정 가능)
+CREATE TABLE IF NOT EXISTS interview.custom_question_targets (
+  custom_question_id uuid NOT NULL REFERENCES interview.custom_questions(id) ON DELETE CASCADE,
+  student_id          uuid NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
+  PRIMARY KEY (custom_question_id, student_id)
+);
+ALTER TABLE interview.custom_question_targets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_custom_question_targets" ON interview.custom_question_targets;
+DROP POLICY IF EXISTS "anon insert interview_custom_question_targets" ON interview.custom_question_targets;
+DROP POLICY IF EXISTS "anon delete interview_custom_question_targets" ON interview.custom_question_targets;
+
+CREATE POLICY "anon select interview_custom_question_targets" ON interview.custom_question_targets
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_custom_question_targets" ON interview.custom_question_targets
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon delete interview_custom_question_targets" ON interview.custom_question_targets
+  FOR DELETE TO anon USING (true);
+
+-- 공통/개별 질문에 대한 학생 답변 (interview.answers와 동일한 구조, questions 대신 custom_questions 참조)
+CREATE TABLE IF NOT EXISTS interview.custom_answers (
+  id                 uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  student_id         uuid        NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
+  custom_question_id uuid        NOT NULL REFERENCES interview.custom_questions(id) ON DELETE CASCADE,
+  answer_text        text        NOT NULL DEFAULT '',
+  created_at         timestamptz NOT NULL DEFAULT now(),
+  updated_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (student_id, custom_question_id)
+);
+ALTER TABLE interview.custom_answers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_custom_answers" ON interview.custom_answers;
+DROP POLICY IF EXISTS "anon insert interview_custom_answers" ON interview.custom_answers;
+DROP POLICY IF EXISTS "anon update interview_custom_answers" ON interview.custom_answers;
+
+CREATE POLICY "anon select interview_custom_answers" ON interview.custom_answers
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_custom_answers" ON interview.custom_answers
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_custom_answers" ON interview.custom_answers
+  FOR UPDATE TO anon USING (true);
+
+CREATE OR REPLACE FUNCTION interview.custom_answers_set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_interview_custom_answers_updated_at ON interview.custom_answers;
+CREATE TRIGGER trg_interview_custom_answers_updated_at
+  BEFORE UPDATE ON interview.custom_answers
+  FOR EACH ROW EXECUTE FUNCTION interview.custom_answers_set_updated_at();
+
+-- ────────────────────────────────────────────
 -- 5. 이미 만들어진 테이블/함수에 대한 권한 재부여
 --    (스크립트를 이미 한 번 실행한 뒤 위의 GRANT/ALTER DEFAULT PRIVILEGES 구문이
 --     새로 추가된 경우, 기존 객체에는 소급 적용되지 않으므로 여기서 명시적으로 다시 부여)
