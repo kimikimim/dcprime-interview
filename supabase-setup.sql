@@ -171,16 +171,6 @@ CREATE POLICY "anon delete interview_questions" ON interview.questions
 
 CREATE INDEX IF NOT EXISTS idx_interview_questions_university ON interview.questions (university);
 
--- 데모용 샘플 질문
-INSERT INTO interview.questions (university, department, track, category, question_text)
-SELECT * FROM (VALUES
-  ('서울대학교', '컴퓨터공학부', '지역균형', '전공적합성', '본인이 프로그래밍에 흥미를 느끼게 된 계기를 말해보세요.'),
-  ('서울대학교', '컴퓨터공학부', '지역균형', '인성', '팀 프로젝트에서 갈등을 겪었던 경험과 해결 과정을 설명해보세요.'),
-  ('연세대학교', '경영학과', '활동우수형', '전공적합성', '경영학을 선택한 이유와 관련 활동 경험을 말해보세요.'),
-  ('고려대학교', '심리학과', '학업우수형', '인성', '자기소개서에 기재한 활동 중 가장 의미 있었던 활동은 무엇인가요.')
-) AS v(university, department, track, category, question_text)
-WHERE NOT EXISTS (SELECT 1 FROM interview.questions);
-
 -- ────────────────────────────────────────────
 -- 4. 학생 답변 (문제은행 질문별로 학생이 작성한 답변)
 --    RLS는 anon 전체 허용 (questions와 동일한 신뢰 모델 — student_id는 클라이언트가
