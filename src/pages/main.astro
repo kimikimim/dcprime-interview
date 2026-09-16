@@ -244,6 +244,7 @@ import "../styles/panel.css";
         question_text: string;
       };
       let allQuestions: Question[] = [];
+      let myAnswers: Record<string, string> = {};
 
       function populateFilterOptions() {
         const universities = Array.from(new Set(allQuestions.map((q) => q.university))).sort((a, b) => a.localeCompare(b, "ko"));
@@ -294,14 +295,62 @@ import "../styles/panel.css";
                 ${q.track ? `<span class="student-mgmt-meta">· ${escapeHtml(q.track)}</span>` : ""}
                 ${q.category ? `<span class="student-mgmt-meta" style="margin-left:auto">${escapeHtml(q.category)}</span>` : ""}
               </div>
-              <p style="font-size:14px;color:var(--black);line-height:1.6">${escapeHtml(q.question_text)}</p>
+              <p style="font-size:14px;color:var(--black);line-height:1.6;margin-bottom:12px">${escapeHtml(q.question_text)}</p>
+              <textarea class="form-input answer-input" data-question-id="${q.id}" rows="3"
+                placeholder="이 질문에 대한 나만의 답변을 적어보세요"
+                style="height:auto;padding:10px 12px;resize:vertical;line-height:1.5">${escapeHtml(myAnswers[q.id] ?? "")}</textarea>
+              <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+                <button class="btn-primary-sm save-answer-btn" data-question-id="${q.id}">답변 저장</button>
+                <span class="answer-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
+              </div>
             </div>
           `)
           .join("");
+
+        list.querySelectorAll<HTMLButtonElement>(".save-answer-btn").forEach((btn) =>
+          btn.addEventListener("click", () => saveAnswer(btn.dataset.questionId!))
+        );
+      }
+
+      async function loadAnswers() {
+        const { data, error } = await supabase.from("answers").select("question_id, answer_text").eq("student_id", session.id);
+        if (error) {
+          console.error(error);
+          return;
+        }
+        myAnswers = Object.fromEntries((data ?? []).map((a: any) => [a.question_id, a.answer_text]));
+      }
+
+      async function saveAnswer(questionId: string) {
+        const textarea = document.querySelector<HTMLTextAreaElement>(`.answer-input[data-question-id="${questionId}"]`)!;
+        const statusEl = document.querySelector<HTMLElement>(`.answer-status[data-question-id="${questionId}"]`)!;
+        const btn = document.querySelector<HTMLButtonElement>(`.save-answer-btn[data-question-id="${questionId}"]`)!;
+        const answerText = textarea.value.trim();
+
+        btn.disabled = true;
+        statusEl.textContent = "저장 중...";
+
+        const { error } = await supabase
+          .from("answers")
+          .upsert({ student_id: session.id, question_id: questionId, answer_text: answerText }, { onConflict: "student_id,question_id" });
+
+        btn.disabled = false;
+
+        if (error) {
+          statusEl.textContent = "저장 실패";
+          console.error(error);
+          return;
+        }
+        myAnswers[questionId] = answerText;
+        statusEl.textContent = "저장됨 ✓";
+        setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
       }
 
       async function loadQuestions() {
-        const { data, error } = await supabase.from("questions").select("*").order("university", { ascending: true });
+        const [{ data, error }] = await Promise.all([
+          supabase.from("questions").select("*").order("university", { ascending: true }),
+          loadAnswers(),
+        ]);
         if (error) {
           $("questionList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
           console.error(error);

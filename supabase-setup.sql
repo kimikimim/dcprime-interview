@@ -186,7 +186,48 @@ SELECT * FROM (VALUES
 WHERE NOT EXISTS (SELECT 1 FROM interview.questions);
 
 -- ────────────────────────────────────────────
--- 4. 이미 만들어진 테이블/함수에 대한 권한 재부여
+-- 4. 학생 답변 (문제은행 질문별로 학생이 작성한 답변)
+--    RLS는 anon 전체 허용 (questions와 동일한 신뢰 모델 — student_id는 클라이언트가
+--    로그인 세션에서 들고 있는 값을 그대로 사용)
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.answers (
+  id          uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  student_id  uuid        NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
+  question_id uuid        NOT NULL REFERENCES interview.questions(id) ON DELETE CASCADE,
+  answer_text text        NOT NULL DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (student_id, question_id)
+);
+ALTER TABLE interview.answers ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_answers" ON interview.answers;
+DROP POLICY IF EXISTS "anon insert interview_answers" ON interview.answers;
+DROP POLICY IF EXISTS "anon update interview_answers" ON interview.answers;
+
+CREATE POLICY "anon select interview_answers" ON interview.answers
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_answers" ON interview.answers
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_answers" ON interview.answers
+  FOR UPDATE TO anon USING (true);
+
+CREATE OR REPLACE FUNCTION interview.answers_set_updated_at()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_interview_answers_updated_at ON interview.answers;
+CREATE TRIGGER trg_interview_answers_updated_at
+  BEFORE UPDATE ON interview.answers
+  FOR EACH ROW EXECUTE FUNCTION interview.answers_set_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_interview_answers_student ON interview.answers (student_id);
+
+-- ────────────────────────────────────────────
+-- 5. 이미 만들어진 테이블/함수에 대한 권한 재부여
 --    (스크립트를 이미 한 번 실행한 뒤 위의 GRANT/ALTER DEFAULT PRIVILEGES 구문이
 --     새로 추가된 경우, 기존 객체에는 소급 적용되지 않으므로 여기서 명시적으로 다시 부여)
 -- ────────────────────────────────────────────
