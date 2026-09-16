@@ -170,6 +170,16 @@ import "../styles/global.css";
             showError("비밀번호가 틀렸습니다.");
           }
         } else {
+          const { data: isAdmin, error: adminError } = await supabase.rpc("verify_admin_password", { p_pw: pin });
+          if (!adminError && isAdmin === true) {
+            sessionStorage.setItem("admin_authed", "ok");
+            loadingText.textContent = "관리자님, 환영해요!";
+            setTimeout(() => {
+              window.location.href = "/admin";
+            }, 700);
+            return;
+          }
+
           const { data, error } = await supabase.rpc("verify_student_login", { p_pw: pin });
           if (!error && data && data.length > 0) {
             sessionStorage.setItem("student_session", JSON.stringify(data[0]));
