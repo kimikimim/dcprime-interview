@@ -59,7 +59,15 @@ import "../../styles/panel.css";
     <!-- 학습 현황 -->
     <div class="tab-panel active" id="tabStudy">
       <div class="admin-panel">
-        <p class="empty-text">학습 현황은 준비 중입니다.</p>
+        <div class="panel-toolbar">
+          <h2 class="section-subtitle" style="margin:0">학습 현황</h2>
+          <select class="form-input" id="studyStudentSelect" style="max-width:200px;height:36px;padding:0 10px">
+            <option value="">학생 선택</option>
+          </select>
+        </div>
+        <div id="studyContent">
+          <p class="empty-text">학생을 선택하면 공통·개별 질문 답변과 모의면접 녹음을 확인할 수 있습니다.</p>
+        </div>
       </div>
     </div>
 
@@ -268,6 +276,108 @@ import "../../styles/panel.css";
         );
 
         renderStudentPicker();
+        renderStudyStudentOptions();
+      }
+
+      // ── 학습 현황: 학생별 답변/모의면접 녹음 확인 ──
+      function recordingsUrl(path: string): string {
+        return supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl;
+      }
+
+      function mockItemLabel(type: string): string {
+        if (type === "intro") return "자기소개";
+        if (type === "main") return "본질문";
+        if (type === "followup") return "꼬리질문";
+        return "마무리 질문";
+      }
+
+      function renderStudyStudentOptions() {
+        const select = $<HTMLSelectElement>("studyStudentSelect");
+        const prevValue = select.value;
+        select.innerHTML =
+          `<option value="">학생 선택</option>` +
+          studentsCache.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+        if (prevValue && studentsCache.some((s) => s.id === prevValue)) {
+          select.value = prevValue;
+        }
+        select.onchange = () => loadStudyContent(select.value);
+        loadStudyContent(select.value);
+      }
+
+      async function loadStudyContent(studentId: string) {
+        const container = $("studyContent");
+        if (!studentId) {
+          container.innerHTML = `<p class="empty-text">학생을 선택하면 공통·개별 질문 답변과 모의면접 녹음을 확인할 수 있습니다.</p>`;
+          return;
+        }
+        container.innerHTML = `<p class="empty-text">불러오는 중...</p>`;
+
+        const [{ data: answerRows, error: answerError }, { data: sessionRows, error: sessionError }] = await Promise.all([
+          supabase
+            .from("custom_answers")
+            .select("answer_text, audio_path, custom_questions(question_text, visibility)")
+            .eq("student_id", studentId),
+          supabase
+            .from("mock_sessions")
+            .select("*, mock_session_items(*)")
+            .eq("student_id", studentId)
+            .order("started_at", { ascending: false }),
+        ]);
+
+        if (answerError) console.error(answerError);
+        if (sessionError) console.error(sessionError);
+
+        let html = `<h3 class="section-subtitle" style="margin:4px 0 10px">공통·개별 질문 답변</h3>`;
+        const answered = ((answerRows ?? []) as any[]).filter((a) => a.audio_path || (a.answer_text && a.answer_text.trim()));
+        if (answered.length === 0) {
+          html += `<p class="empty-text">등록된 답변이 없습니다.</p>`;
+        } else {
+          html += answered
+            .map(
+              (a) => `
+                <div class="card" style="margin-bottom:10px">
+                  <p style="font-size:12px;color:var(--gray-3);font-weight:700;margin-bottom:6px">${a.custom_questions?.visibility === "common" ? "공통 질문" : "개별 질문"}</p>
+                  <p style="font-size:14px;color:var(--black);margin-bottom:10px">${escapeHtml(a.custom_questions?.question_text ?? "")}</p>
+                  ${a.audio_path ? `<audio controls src="${recordingsUrl(a.audio_path)}" style="width:100%;height:36px"></audio>` : ""}
+                  ${a.answer_text ? `<p style="font-size:13px;color:var(--gray-2);margin-top:10px;white-space:pre-wrap;line-height:1.6">${escapeHtml(a.answer_text)}</p>` : ""}
+                </div>
+              `
+            )
+            .join("");
+        }
+
+        html += `<h3 class="section-subtitle" style="margin:24px 0 10px">모의면접 세션</h3>`;
+        const sessions = (sessionRows ?? []) as any[];
+        if (sessions.length === 0) {
+          html += `<p class="empty-text">진행한 모의면접이 없습니다.</p>`;
+        } else {
+          html += sessions
+            .map((s) => {
+              const items = ((s.mock_session_items ?? []) as any[]).sort((a, b) => a.sequence_order - b.sequence_order);
+              return `
+                <div class="card" style="margin-bottom:14px">
+                  <p style="font-size:12px;color:var(--gray-3);font-weight:700;margin-bottom:12px">
+                    ${new Date(s.started_at).toLocaleString("ko-KR")} · ${s.status === "completed" ? "완료" : "진행 중"}
+                  </p>
+                  ${items
+                    .map(
+                      (it) => `
+                        <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--gray-6)">
+                          <p style="font-size:12px;color:var(--blue);font-weight:700;margin-bottom:4px">${mockItemLabel(it.item_type)}</p>
+                          <p style="font-size:14px;color:var(--black);margin-bottom:8px">${escapeHtml(it.question_text)}</p>
+                          ${it.audio_path ? `<audio controls src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
+                          ${it.transcript ? `<p style="font-size:13px;color:var(--gray-2);margin-top:8px;white-space:pre-wrap;line-height:1.6">받아쓰기: ${escapeHtml(it.transcript)}</p>` : ""}
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              `;
+            })
+            .join("");
+        }
+
+        container.innerHTML = html;
       }
 
       // ── 문제출제: 공통 질문 / 개별 질문 서브탭 ──

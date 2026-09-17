@@ -51,9 +51,9 @@ import "../styles/panel.css";
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           목표
         </button>
-        <button class="tab-btn" data-tab="bank">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          문제은행
+        <button class="tab-btn" data-tab="mock">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" stroke="currentColor" stroke-width="2"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4M8 23h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          모의면접
         </button>
         <button class="tab-bar-logout" id="hamburgerLogoutBtn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -117,20 +117,43 @@ import "../styles/panel.css";
       </div>
     </div>
 
-    <!-- 문제은행 -->
-    <div class="tab-panel" id="tabBank">
+    <!-- 모의면접 -->
+    <div class="tab-panel" id="tabMock">
       <div class="admin-panel">
         <div class="panel-toolbar">
-          <h2 class="section-subtitle" style="margin:0">문제은행</h2>
+          <h2 class="section-subtitle" style="margin:0">모의면접</h2>
         </div>
-        <div id="questionList" style="display:flex;flex-direction:column;gap:10px">
-          <p class="empty-text">불러오는 중...</p>
+
+        <!-- 대기 화면 -->
+        <div id="mockIdle" class="card" style="text-align:center;padding:32px 20px">
+          <p style="font-size:15px;color:var(--black);line-height:1.6;margin-bottom:6px">10~15분 랜덤 시간의 모의면접을 진행합니다.</p>
+          <p class="empty-text" style="margin-bottom:20px">자기소개 → 본질문 → 꼬리질문 → 마무리 질문 순서로 진행되며,<br />답변은 음성으로 녹음됩니다. 마이크 권한을 허용해주세요.</p>
+          <button class="btn-primary-sm" id="mockStartBtn" style="padding:0 24px;height:40px;font-size:14px">모의면접 시작</button>
+        </div>
+
+        <!-- 진행 화면 -->
+        <div id="mockActive" class="card hidden">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <span class="tag-pill" id="mockProgress"></span>
+            <span class="student-mgmt-meta" id="mockTimer">남은 시간 --:--</span>
+          </div>
+          <p style="font-size:16px;font-weight:700;color:var(--black);line-height:1.6;margin-bottom:20px" id="mockQuestionText"></p>
+          <div style="display:flex;align-items:center;gap:12px">
+            <button class="btn-primary-sm" id="mockRecordBtn" style="padding:0 20px;height:40px;font-size:14px">답변 녹음 시작</button>
+            <span class="student-mgmt-meta" id="mockRecordStatus"></span>
+          </div>
+        </div>
+
+        <!-- 완료 화면 -->
+        <div id="mockDone" class="card hidden" style="text-align:center;padding:32px 20px">
+          <p style="font-size:15px;color:var(--black);margin-bottom:20px">모의면접이 종료되었습니다. 수고하셨어요!</p>
+          <button class="btn-primary-sm" id="mockRestartBtn" style="padding:0 24px;height:40px;font-size:14px">다시 시작</button>
         </div>
       </div>
     </div>
 
     <script>
-      import { supabase } from "../lib/supabase";
+      import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
 
       type StudentSession = { id: string; name: string; school: string | null };
 
@@ -164,7 +187,7 @@ import "../styles/panel.css";
         common: $("tabCommon"),
         personal: $("tabPersonal"),
         goalsetting: $("tabGoalSetting"),
-        bank: $("tabBank"),
+        mock: $("tabMock"),
       };
       const tabBar = document.querySelector<HTMLElement>(".tab-bar")!;
       const menuBackdrop = document.createElement("div");
@@ -253,111 +276,43 @@ import "../styles/panel.css";
           .join("");
 
         container.querySelectorAll<HTMLButtonElement>(".goto-bank-btn").forEach((btn) =>
-          btn.addEventListener("click", () => activateTab("bank"))
+          btn.addEventListener("click", () => activateTab("mock"))
         );
-      }
-
-      // ── 문제은행 ──
-      type Question = {
-        id: string;
-        university: string;
-        department: string | null;
-        track: string | null;
-        category: string | null;
-        question_text: string;
-      };
-      let allQuestions: Question[] = [];
-      let myAnswers: Record<string, string> = {};
-
-      function renderQuestions() {
-        const list = $("questionList");
-        if (allQuestions.length === 0) {
-          list.innerHTML = `<p class="empty-text">등록된 질문이 없습니다.</p>`;
-          return;
-        }
-
-        list.innerHTML = allQuestions
-          .map((q) => `
-            <div class="card">
-              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:8px">
-                <span class="tag-pill">${escapeHtml(q.university)}</span>
-                ${q.department ? `<span class="student-mgmt-meta">${escapeHtml(q.department)}</span>` : ""}
-                ${q.track ? `<span class="student-mgmt-meta">· ${escapeHtml(q.track)}</span>` : ""}
-                ${q.category ? `<span class="student-mgmt-meta" style="margin-left:auto">${escapeHtml(q.category)}</span>` : ""}
-              </div>
-              <p style="font-size:14px;color:var(--black);line-height:1.6;margin-bottom:12px">${escapeHtml(q.question_text)}</p>
-              <textarea class="form-input answer-input" data-question-id="${q.id}" rows="3"
-                placeholder="이 질문에 대한 나만의 답변을 적어보세요"
-                style="height:auto;padding:10px 12px;resize:vertical;line-height:1.5">${escapeHtml(myAnswers[q.id] ?? "")}</textarea>
-              <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
-                <button class="btn-primary-sm save-answer-btn" data-question-id="${q.id}">답변 저장</button>
-                <span class="answer-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
-              </div>
-            </div>
-          `)
-          .join("");
-
-        list.querySelectorAll<HTMLButtonElement>(".save-answer-btn").forEach((btn) =>
-          btn.addEventListener("click", () => saveAnswer(btn.dataset.questionId!))
-        );
-      }
-
-      async function loadAnswers() {
-        const { data, error } = await supabase.from("answers").select("question_id, answer_text").eq("student_id", session.id);
-        if (error) {
-          console.error(error);
-          return;
-        }
-        myAnswers = Object.fromEntries((data ?? []).map((a: any) => [a.question_id, a.answer_text]));
-      }
-
-      async function saveAnswer(questionId: string) {
-        const textarea = document.querySelector<HTMLTextAreaElement>(`.answer-input[data-question-id="${questionId}"]`)!;
-        const statusEl = document.querySelector<HTMLElement>(`.answer-status[data-question-id="${questionId}"]`)!;
-        const btn = document.querySelector<HTMLButtonElement>(`.save-answer-btn[data-question-id="${questionId}"]`)!;
-        const answerText = textarea.value.trim();
-
-        btn.disabled = true;
-        statusEl.textContent = "저장 중...";
-
-        const { error } = await supabase
-          .from("answers")
-          .upsert({ student_id: session.id, question_id: questionId, answer_text: answerText }, { onConflict: "student_id,question_id" });
-
-        btn.disabled = false;
-
-        if (error) {
-          statusEl.textContent = "저장 실패";
-          console.error(error);
-          return;
-        }
-        myAnswers[questionId] = answerText;
-        statusEl.textContent = "저장됨 ✓";
-        setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
       }
 
       // ── 공통 질문 / 개별 질문 (관리자가 문제출제에서 등록) ──
       type CustomQuestion = { id: string; question_text: string };
       let myCustomAnswers: Record<string, string> = {};
+      let myCustomAudioPaths: Record<string, string | null> = {};
+      const activeCustomRecorders: Record<string, MediaRecorder> = {};
+
+      function recordingsUrl(path: string): string {
+        return supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl;
+      }
 
       async function loadCustomAnswers() {
-        const { data, error } = await supabase.from("custom_answers").select("custom_question_id, answer_text").eq("student_id", session.id);
+        const { data, error } = await supabase
+          .from("custom_answers")
+          .select("custom_question_id, answer_text, audio_path")
+          .eq("student_id", session.id);
         if (error) {
           console.error(error);
           return;
         }
         myCustomAnswers = Object.fromEntries((data ?? []).map((a: any) => [a.custom_question_id, a.answer_text]));
+        myCustomAudioPaths = Object.fromEntries((data ?? []).map((a: any) => [a.custom_question_id, a.audio_path]));
       }
 
-      function renderCustomQuestionList(containerId: string, questions: CustomQuestion[], emptyMessage: string) {
+      function renderCustomQuestionList(containerId: string, questions: CustomQuestion[], emptyMessage: string, kind: "common" | "personal") {
         const list = $(containerId);
         if (questions.length === 0) {
           list.innerHTML = `<p class="empty-text">${emptyMessage}</p>`;
           return;
         }
         list.innerHTML = questions
-          .map(
-            (q) => `
+          .map((q) => {
+            const audioPath = myCustomAudioPaths[q.id];
+            return `
               <div class="card">
                 <p style="font-size:14px;color:var(--black);line-height:1.6;margin-bottom:12px">${escapeHtml(q.question_text)}</p>
                 <textarea class="form-input custom-answer-input" data-question-id="${q.id}" rows="3"
@@ -367,13 +322,21 @@ import "../styles/panel.css";
                   <button class="btn-primary-sm save-custom-answer-btn" data-question-id="${q.id}">답변 저장</button>
                   <span class="custom-answer-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
                 </div>
+                <div style="display:flex;align-items:center;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--gray-6)">
+                  <button class="btn-primary-sm record-custom-btn" data-question-id="${q.id}" data-kind="${kind}">${audioPath ? "다시 녹음" : "음성 답변 녹음"}</button>
+                  <span class="custom-record-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
+                </div>
+                ${audioPath ? `<audio controls src="${recordingsUrl(audioPath)}" style="width:100%;margin-top:10px;height:36px"></audio>` : ""}
               </div>
-            `
-          )
+            `;
+          })
           .join("");
 
         list.querySelectorAll<HTMLButtonElement>(".save-custom-answer-btn").forEach((btn) =>
           btn.addEventListener("click", () => saveCustomAnswer(btn.dataset.questionId!))
+        );
+        list.querySelectorAll<HTMLButtonElement>(".record-custom-btn").forEach((btn) =>
+          btn.addEventListener("click", () => toggleCustomRecording(btn.dataset.questionId!, btn.dataset.kind as "common" | "personal"))
         );
       }
 
@@ -402,6 +365,70 @@ import "../styles/panel.css";
         setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
       }
 
+      async function toggleCustomRecording(questionId: string, kind: "common" | "personal") {
+        const btn = document.querySelector<HTMLButtonElement>(`.record-custom-btn[data-question-id="${questionId}"]`)!;
+        const statusEl = document.querySelector<HTMLElement>(`.custom-record-status[data-question-id="${questionId}"]`)!;
+
+        const existing = activeCustomRecorders[questionId];
+        if (existing) {
+          existing.stop();
+          return;
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+          const recorder = new MediaRecorder(stream, { mimeType });
+          const chunks: BlobPart[] = [];
+          recorder.ondataavailable = (e) => {
+            if (e.data.size > 0) chunks.push(e.data);
+          };
+          recorder.onstop = async () => {
+            stream.getTracks().forEach((t) => t.stop());
+            delete activeCustomRecorders[questionId];
+            btn.disabled = true;
+            statusEl.textContent = "업로드 중...";
+
+            const blob = new Blob(chunks, { type: mimeType });
+            const ext = mimeType.includes("webm") ? "webm" : "m4a";
+            const path = `${kind}/${session.id}/${questionId}.${ext}`;
+
+            const { error: uploadError } = await supabase.storage.from("recordings").upload(path, blob, {
+              contentType: mimeType,
+              upsert: true,
+            });
+            if (uploadError) {
+              btn.disabled = false;
+              statusEl.textContent = "업로드 실패";
+              console.error(uploadError);
+              return;
+            }
+
+            const { error } = await supabase
+              .from("custom_answers")
+              .upsert({ student_id: session.id, custom_question_id: questionId, audio_path: path }, { onConflict: "student_id,custom_question_id" });
+
+            btn.disabled = false;
+            if (error) {
+              statusEl.textContent = "저장 실패";
+              console.error(error);
+              return;
+            }
+            myCustomAudioPaths[questionId] = path;
+            statusEl.textContent = "";
+            if (kind === "common") loadCommonQuestions();
+            else loadPersonalQuestions();
+          };
+          recorder.start();
+          activeCustomRecorders[questionId] = recorder;
+          btn.textContent = "녹음 정지";
+          statusEl.textContent = "녹음 중...";
+        } catch (err) {
+          alert("마이크 권한이 필요합니다.");
+          console.error(err);
+        }
+      }
+
       async function loadCommonQuestions() {
         await loadCustomAnswers();
         const { data, error } = await supabase
@@ -414,7 +441,7 @@ import "../styles/panel.css";
           console.error(error);
           return;
         }
-        renderCustomQuestionList("commonQuestionList", data ?? [], "등록된 공통 질문이 없습니다.");
+        renderCustomQuestionList("commonQuestionList", data ?? [], "등록된 공통 질문이 없습니다.", "common");
       }
 
       async function loadPersonalQuestions() {
@@ -432,22 +459,262 @@ import "../styles/panel.css";
           .map((row: any) => row.custom_questions)
           .filter(Boolean)
           .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
-        renderCustomQuestionList("personalQuestionList", questions, "등록된 개별 질문이 없습니다.");
+        renderCustomQuestionList("personalQuestionList", questions, "등록된 개별 질문이 없습니다.", "personal");
       }
 
-      async function loadQuestions() {
-        const [{ data, error }] = await Promise.all([
-          supabase.from("questions").select("*").order("university", { ascending: true }),
-          loadAnswers(),
+      // ── 모의면접 ──
+      const MOCK_INTRO_PROMPT = "1분 내외로 자기소개를 해주세요.";
+      const MOCK_CLOSING_PROMPT = "마지막으로 강조하고 싶은 점이나 하고 싶은 말이 있다면 자유롭게 말씀해주세요.";
+      const MOCK_FALLBACK_FOLLOWUPS = [
+        "방금 답변한 내용 중 가장 어려웠던 부분을 좀 더 구체적으로 설명해주세요.",
+        "그 경험에서 배운 점을 다른 상황에도 적용한다면 어떻게 적용하겠습니까?",
+        "그 결론에 도달하게 된 근거를 조금 더 자세히 말해주세요.",
+      ];
+
+      type MockItemType = "intro" | "main" | "followup" | "closing";
+      type MockItem = { type: MockItemType; questionText: string; sourceQuestionId?: string | null };
+      type MockPoolQuestion = { id: string; question_text: string };
+
+      let mockSessionId: string | null = null;
+      let mockTimerInterval: number | null = null;
+      let mockDeadline = 0;
+      let mockSequenceOrder = 0;
+      let mockPairsRemaining = 0;
+      let mockPool: MockPoolQuestion[] = [];
+      let mockCurrentItem: MockItem | null = null;
+      let mockMediaRecorder: MediaRecorder | null = null;
+      let mockAudioChunks: BlobPart[] = [];
+      let mockIsRecording = false;
+
+      function mockProgressLabel(type: MockItemType): string {
+        if (type === "intro") return "자기소개";
+        if (type === "main") return "본질문";
+        if (type === "followup") return "꼬리질문";
+        return "마무리 질문";
+      }
+
+      function pickRandom<T>(arr: T[]): T {
+        return arr[Math.floor(Math.random() * arr.length)];
+      }
+
+      async function loadMockQuestionPool(): Promise<MockPoolQuestion[]> {
+        const [{ data: commonData }, { data: targetData }] = await Promise.all([
+          supabase.from("custom_questions").select("id, question_text").eq("visibility", "common"),
+          supabase.from("custom_question_targets").select("custom_questions(id, question_text)").eq("student_id", session.id),
         ]);
-        if (error) {
-          $("questionList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
-          console.error(error);
+        const common = (commonData ?? []) as MockPoolQuestion[];
+        const individual = ((targetData ?? []) as any[]).map((r) => r.custom_questions).filter(Boolean) as MockPoolQuestion[];
+        return [...common, ...individual];
+      }
+
+      async function startMockSession() {
+        mockPool = await loadMockQuestionPool();
+        if (mockPool.length === 0) {
+          alert("아직 등록된 질문이 없습니다. 관리자에게 문의해주세요.");
           return;
         }
-        allQuestions = data ?? [];
-        renderQuestions();
+
+        const plannedDuration = 600 + Math.floor(Math.random() * 301); // 10~15분
+        const { data, error } = await supabase
+          .from("mock_sessions")
+          .insert({ student_id: session.id, planned_duration_seconds: plannedDuration })
+          .select()
+          .single();
+        if (error || !data) {
+          alert("모의면접 세션 생성에 실패했습니다: " + error?.message);
+          return;
+        }
+
+        mockSessionId = data.id;
+        mockSequenceOrder = 0;
+        mockPairsRemaining = 1 + Math.round(Math.random()); // 1~2개
+        mockDeadline = Date.now() + plannedDuration * 1000;
+
+        $("mockIdle").classList.add("hidden");
+        $("mockDone").classList.add("hidden");
+        $("mockActive").classList.remove("hidden");
+
+        startMockTimer();
+        showMockItem({ type: "intro", questionText: MOCK_INTRO_PROMPT });
       }
+
+      function startMockTimer() {
+        updateMockTimerLabel();
+        mockTimerInterval = window.setInterval(updateMockTimerLabel, 1000);
+      }
+
+      function updateMockTimerLabel() {
+        const remainMs = mockDeadline - Date.now();
+        if (remainMs <= 0) {
+          $("mockTimer").textContent = "남은 시간 00:00";
+          if (mockTimerInterval) window.clearInterval(mockTimerInterval);
+          if (mockCurrentItem && mockCurrentItem.type !== "closing" && !mockIsRecording) {
+            mockPairsRemaining = 0;
+            showMockItem({ type: "closing", questionText: MOCK_CLOSING_PROMPT });
+          }
+          return;
+        }
+        const totalSec = Math.floor(remainMs / 1000);
+        const m = String(Math.floor(totalSec / 60)).padStart(2, "0");
+        const s = String(totalSec % 60).padStart(2, "0");
+        $("mockTimer").textContent = `남은 시간 ${m}:${s}`;
+      }
+
+      function showMockItem(item: MockItem) {
+        mockCurrentItem = item;
+        mockSequenceOrder += 1;
+        $("mockQuestionText").textContent = item.questionText;
+        $("mockProgress").textContent = mockProgressLabel(item.type);
+        $<HTMLButtonElement>("mockRecordBtn").textContent = "답변 녹음 시작";
+        $<HTMLButtonElement>("mockRecordBtn").disabled = false;
+        $("mockRecordStatus").textContent = "";
+      }
+
+      async function toggleMockRecording() {
+        if (!mockIsRecording) await startMockRecording();
+        else stopMockRecording();
+      }
+
+      async function startMockRecording() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
+          mockMediaRecorder = new MediaRecorder(stream, { mimeType });
+          mockAudioChunks = [];
+          mockMediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) mockAudioChunks.push(e.data);
+          };
+          mockMediaRecorder.onstop = () => {
+            stream.getTracks().forEach((t) => t.stop());
+            handleMockRecordingStop(mimeType);
+          };
+          mockMediaRecorder.start();
+          mockIsRecording = true;
+          $<HTMLButtonElement>("mockRecordBtn").textContent = "녹음 정지";
+          $("mockRecordStatus").textContent = "녹음 중...";
+        } catch (err) {
+          alert("마이크 권한이 필요합니다.");
+          console.error(err);
+        }
+      }
+
+      function stopMockRecording() {
+        if (mockMediaRecorder && mockMediaRecorder.state !== "inactive") {
+          mockMediaRecorder.stop();
+        }
+        mockIsRecording = false;
+      }
+
+      function blobToBase64(blob: Blob): Promise<string> {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(",")[1] ?? "");
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+
+      async function handleMockRecordingStop(mimeType: string) {
+        const item = mockCurrentItem!;
+        $<HTMLButtonElement>("mockRecordBtn").disabled = true;
+        $("mockRecordStatus").textContent = "처리 중...";
+
+        const blob = new Blob(mockAudioChunks, { type: mimeType });
+        const ext = mimeType.includes("webm") ? "webm" : "m4a";
+        const path = `mock/${mockSessionId}/${mockSequenceOrder}-${item.type}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage.from("recordings").upload(path, blob, {
+          contentType: mimeType,
+          upsert: true,
+        });
+        if (uploadError) console.error("녹음 업로드 실패:", uploadError);
+
+        let transcript: string | null = null;
+        let followupQuestion: string | null = null;
+
+        if (item.type === "main") {
+          try {
+            const audioBase64 = await blobToBase64(blob);
+            const res = await fetch(`${supabaseUrl}/functions/v1/generate-followup`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${supabaseAnonKey}`,
+                apikey: supabaseAnonKey,
+              },
+              body: JSON.stringify({ questionText: item.questionText, audioBase64, mimeType }),
+            });
+            if (res.ok) {
+              const json = await res.json();
+              transcript = json.transcript ?? null;
+              followupQuestion = json.followup_question ?? null;
+            } else {
+              console.error("꼬리질문 생성 실패:", await res.text());
+            }
+          } catch (err) {
+            console.error(err);
+          }
+          if (!followupQuestion) followupQuestion = pickRandom(MOCK_FALLBACK_FOLLOWUPS);
+        }
+
+        await supabase.from("mock_session_items").insert({
+          session_id: mockSessionId,
+          sequence_order: mockSequenceOrder,
+          item_type: item.type,
+          question_text: item.questionText,
+          source_question_id: item.sourceQuestionId ?? null,
+          audio_path: uploadError ? null : path,
+          transcript,
+        });
+
+        await advanceMockSession(item, followupQuestion);
+      }
+
+      async function advanceMockSession(prevItem: MockItem, followupQuestion: string | null) {
+        if (prevItem.type === "intro") {
+          goToNextMainOrClosing();
+          return;
+        }
+        if (prevItem.type === "main") {
+          showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
+          return;
+        }
+        if (prevItem.type === "followup") {
+          mockPairsRemaining -= 1;
+          goToNextMainOrClosing();
+          return;
+        }
+        if (prevItem.type === "closing") {
+          await finishMockSession();
+        }
+      }
+
+      function goToNextMainOrClosing() {
+        if (mockPairsRemaining > 0 && mockPool.length > 0 && Date.now() < mockDeadline) {
+          const idx = Math.floor(Math.random() * mockPool.length);
+          const q = mockPool.splice(idx, 1)[0];
+          showMockItem({ type: "main", questionText: q.question_text, sourceQuestionId: q.id });
+        } else {
+          showMockItem({ type: "closing", questionText: MOCK_CLOSING_PROMPT });
+        }
+      }
+
+      async function finishMockSession() {
+        if (mockTimerInterval) window.clearInterval(mockTimerInterval);
+        await supabase
+          .from("mock_sessions")
+          .update({ status: "completed", ended_at: new Date().toISOString() })
+          .eq("id", mockSessionId!);
+        $("mockActive").classList.add("hidden");
+        $("mockDone").classList.remove("hidden");
+      }
+
+      $("mockStartBtn").addEventListener("click", startMockSession);
+      $("mockRecordBtn").addEventListener("click", toggleMockRecording);
+      $("mockRestartBtn").addEventListener("click", () => {
+        $("mockDone").classList.add("hidden");
+        $("mockIdle").classList.remove("hidden");
+      });
 
       // ── 오늘의 목표 ──
       function todayStr(): string {
@@ -530,7 +797,6 @@ import "../styles/panel.css";
       });
 
       renderApplications();
-      loadQuestions();
       loadGoals();
       loadCommonQuestions();
       loadPersonalQuestions();

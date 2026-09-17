@@ -308,6 +308,8 @@ CREATE POLICY "anon insert interview_custom_answers" ON interview.custom_answers
 CREATE POLICY "anon update interview_custom_answers" ON interview.custom_answers
   FOR UPDATE TO anon USING (true);
 
+ALTER TABLE interview.custom_answers ADD COLUMN IF NOT EXISTS audio_path text;
+
 CREATE OR REPLACE FUNCTION interview.custom_answers_set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -346,6 +348,74 @@ CREATE POLICY "anon delete interview_schedule_events" ON interview.schedule_even
   FOR DELETE TO anon USING (true);
 
 CREATE INDEX IF NOT EXISTS idx_interview_schedule_events_date ON interview.schedule_events (event_date);
+
+-- ────────────────────────────────────────────
+-- 4-4. 모의면접 (AI 꼬리질문)
+--    본질문: custom_questions(공통 전체 + 해당 학생 개별)에서 세션마다 랜덤 1~2개 선택
+--    꼬리질문: 학생이 본질문에 음성으로 답변 -> Edge Function이 Gemini로
+--             STT + 꼬리질문 생성을 한 번에 처리 -> 실시간 생성, DB에는 결과만 저장
+-- ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS interview.mock_sessions (
+  id                       uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  student_id               uuid        NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
+  planned_duration_seconds int         NOT NULL,
+  status                   text        NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed')),
+  started_at               timestamptz NOT NULL DEFAULT now(),
+  ended_at                 timestamptz
+);
+ALTER TABLE interview.mock_sessions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
+DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;
+DROP POLICY IF EXISTS "anon update interview_mock_sessions" ON interview.mock_sessions;
+
+CREATE POLICY "anon select interview_mock_sessions" ON interview.mock_sessions
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_mock_sessions" ON interview.mock_sessions
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_mock_sessions" ON interview.mock_sessions
+  FOR UPDATE TO anon USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_interview_mock_sessions_student ON interview.mock_sessions (student_id);
+
+CREATE TABLE IF NOT EXISTS interview.mock_session_items (
+  id                 uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  session_id         uuid        NOT NULL REFERENCES interview.mock_sessions(id) ON DELETE CASCADE,
+  sequence_order     int         NOT NULL,
+  item_type          text        NOT NULL CHECK (item_type IN ('intro', 'main', 'followup', 'closing')),
+  question_text      text        NOT NULL,
+  source_question_id uuid        REFERENCES interview.custom_questions(id) ON DELETE SET NULL,
+  audio_path         text,
+  transcript         text,
+  created_at         timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE interview.mock_session_items ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon select interview_mock_session_items" ON interview.mock_session_items;
+DROP POLICY IF EXISTS "anon insert interview_mock_session_items" ON interview.mock_session_items;
+DROP POLICY IF EXISTS "anon update interview_mock_session_items" ON interview.mock_session_items;
+
+CREATE POLICY "anon select interview_mock_session_items" ON interview.mock_session_items
+  FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert interview_mock_session_items" ON interview.mock_session_items
+  FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update interview_mock_session_items" ON interview.mock_session_items
+  FOR UPDATE TO anon USING (true);
+
+CREATE INDEX IF NOT EXISTS idx_interview_mock_session_items_session ON interview.mock_session_items (session_id);
+
+-- 녹음 파일 저장용 Storage 버킷 (모의면접 + 공통/개별 질문 음성 답변 공용,
+-- 앱 게이트 신뢰 모델과 동일하게 anon 전체 허용)
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('recordings', 'recordings', true)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "anon all mock-recordings" ON storage.objects;
+DROP POLICY IF EXISTS "anon all recordings" ON storage.objects;
+CREATE POLICY "anon all recordings" ON storage.objects
+  FOR ALL TO anon
+  USING (bucket_id = 'recordings')
+  WITH CHECK (bucket_id = 'recordings');
 
 -- ────────────────────────────────────────────
 -- 5. 이미 만들어진 테이블/함수에 대한 권한 재부여
