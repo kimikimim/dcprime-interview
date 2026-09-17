@@ -111,8 +111,8 @@ import "../../styles/panel.css";
         <!-- 개별 질문 -->
         <div class="subtab-panel" id="subtabIndividual">
           <div class="card" style="margin-bottom:16px">
-            <p class="form-label">질문 내용</p>
-            <textarea class="form-input" id="individualQuestionInput" rows="3" placeholder="선택한 학생에게만 보여줄 질문을 입력하세요" style="height:auto;padding:10px 12px;resize:vertical;margin-bottom:12px"></textarea>
+            <p class="form-label">질문 내용 <span class="form-hint" style="display:inline;margin:0">(여러 개는 세미콜론(;)으로 구분, 번호는 자동 제거)</span></p>
+            <textarea class="form-input" id="individualQuestionInput" rows="5" placeholder={"선택한 학생에게만 보여줄 질문을 입력하세요\n\n여러 개를 한 번에 등록하려면:\n1. 질문내용;\n2. 질문내용;\n3. 질문내용;"} style="height:auto;padding:10px 12px;resize:vertical;margin-bottom:12px"></textarea>
             <p class="form-label">대상 학생 (여러 명 선택 가능)</p>
             <div class="student-picker" id="individualStudentPicker">
               <p class="empty-text">학생 목록을 불러오는 중...</p>
@@ -668,10 +668,18 @@ import "../../styles/panel.css";
         );
       }
 
+      // 세미콜론(;) 기준으로 여러 질문을 분리하고, 각 줄 앞의 "1. " 같은 번호를 제거
+      function parseBulkQuestions(raw: string): string[] {
+        return raw
+          .split(";")
+          .map((seg) => seg.trim().replace(/^\d+\.\s*/, "").trim())
+          .filter(Boolean);
+      }
+
       $("individualQuestionSubmit").addEventListener("click", async () => {
         const input = $<HTMLTextAreaElement>("individualQuestionInput");
-        const text = input.value.trim();
-        if (!text) {
+        const questions = parseBulkQuestions(input.value);
+        if (questions.length === 0) {
           alert("질문 내용을 입력해주세요.");
           return;
         }
@@ -682,16 +690,17 @@ import "../../styles/panel.css";
 
         const { data, error } = await supabase
           .from("custom_questions")
-          .insert({ question_text: text, visibility: "individual" })
-          .select()
-          .single();
+          .insert(questions.map((question_text) => ({ question_text, visibility: "individual" })))
+          .select();
 
         if (error || !data) {
           alert("등록에 실패했습니다: " + error?.message);
           return;
         }
 
-        const targets = [...selectedStudentIds].map((student_id) => ({ custom_question_id: data.id, student_id }));
+        const targets = data.flatMap((q: any) =>
+          [...selectedStudentIds].map((student_id) => ({ custom_question_id: q.id, student_id }))
+        );
         const { error: targetError } = await supabase.from("custom_question_targets").insert(targets);
         if (targetError) {
           alert("대상 학생 지정에 실패했습니다: " + targetError.message);
