@@ -37,11 +37,7 @@ import "../../styles/panel.css";
       </div>
 
       <div class="tab-bar">
-        <button class="tab-btn active" data-tab="schedule">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          일정 관리
-        </button>
-        <button class="tab-btn" data-tab="study">
+        <button class="tab-btn active" data-tab="study">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2zM22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           학습 현황
         </button>
@@ -60,29 +56,8 @@ import "../../styles/panel.css";
       </div>
     </header>
 
-    <!-- 일정 관리 -->
-    <div class="tab-panel active" id="tabSchedule">
-      <div class="admin-panel" style="max-width:1100px">
-        <div class="panel-toolbar">
-          <div style="display:flex;align-items:center;gap:8px">
-            <button class="icon-btn-sm" id="weekPrevBtn">‹</button>
-            <span class="section-subtitle" id="weekRangeLabel" style="min-width:170px;text-align:center"></span>
-            <button class="icon-btn-sm" id="weekNextBtn">›</button>
-            <button class="btn-ghost-sm" id="weekTodayBtn">오늘</button>
-          </div>
-          <button class="btn-primary-sm" id="addEventBtn">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
-            일정 추가
-          </button>
-        </div>
-        <div class="cal-wrap">
-          <div class="cal-grid" id="calGrid"></div>
-        </div>
-      </div>
-    </div>
-
     <!-- 학습 현황 -->
-    <div class="tab-panel" id="tabStudy">
+    <div class="tab-panel active" id="tabStudy">
       <div class="admin-panel">
         <p class="empty-text">학습 현황은 준비 중입니다.</p>
       </div>
@@ -182,56 +157,6 @@ import "../../styles/panel.css";
       </div>
     </div>
 
-    <!-- 일정 추가 모달 -->
-    <div class="modal-overlay" id="eventModal">
-      <div class="modal modal--form">
-        <h3 class="modal-title">일정 추가</h3>
-
-        <div class="form-group">
-          <label class="form-label">제목 <span class="form-required">*</span></label>
-          <input class="form-input" id="eventTitle" type="text" placeholder="OOO 면접" maxlength="60" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">일자 <span class="form-required">*</span></label>
-          <input class="form-input" id="eventDate" type="date" />
-        </div>
-        <div class="form-group" style="display:flex;gap:10px">
-          <div style="flex:1">
-            <label class="form-label">시작 시간</label>
-            <input class="form-input" id="eventStart" type="time" value="16:00" />
-          </div>
-          <div style="flex:1">
-            <label class="form-label">종료 시간</label>
-            <input class="form-input" id="eventEnd" type="time" value="17:00" />
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">참고해야 할 내용</label>
-          <textarea class="form-input" id="eventNotes" rows="3" style="height:auto;padding:10px 12px;resize:vertical" placeholder="예: 준비물, 유의사항 등"></textarea>
-        </div>
-
-        <p class="form-error" id="eventFormError"></p>
-
-        <div class="modal-actions">
-          <button class="modal-btn modal-btn--cancel" id="eventModalCancel">취소</button>
-          <button class="modal-btn modal-btn--save" id="eventModalSave">등록</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- 일정 상세 모달 -->
-    <div class="modal-overlay" id="eventDetailModal">
-      <div class="modal modal--form">
-        <h3 class="modal-title" id="eventDetailTitle">일정</h3>
-        <p class="student-mgmt-meta" id="eventDetailTime" style="margin-bottom:14px"></p>
-        <p style="font-size:14px;color:var(--black);line-height:1.7;white-space:pre-wrap;margin-bottom:20px" id="eventDetailNotes"></p>
-        <div class="modal-actions">
-          <button class="modal-btn modal-btn--cancel" id="eventDetailClose">닫기</button>
-          <button class="modal-btn modal-btn--confirm" id="eventDetailDelete">삭제</button>
-        </div>
-      </div>
-    </div>
-
     <script>
       import { supabase } from "../../lib/supabase";
 
@@ -266,7 +191,6 @@ import "../../styles/panel.css";
       // ── 탭 전환 + 햄버거 메뉴 ──
       const tabBtns = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
       const panels: Record<string, HTMLElement> = {
-        schedule: $("tabSchedule"),
         study: $("tabStudy"),
         students: $("tabStudents"),
         authoring: $("tabAuthoring"),
@@ -293,195 +217,6 @@ import "../../styles/panel.css";
       });
       menuBackdrop.addEventListener("click", closeMenu);
       $("hamburgerLogoutBtn").addEventListener("click", () => $("logoutBtn").click());
-
-      // ── 일정 관리: 주간 캘린더 ──
-      const CAL_START_HOUR = 16; // 오후 4시
-      const CAL_END_HOUR = 22; // 오후 10시
-      const CAL_HOURS = Array.from({ length: CAL_END_HOUR - CAL_START_HOUR }, (_, i) => CAL_START_HOUR + i);
-      const CAL_ROW_PX = 60; // 1시간당 픽셀
-      const DOW = ["일", "월", "화", "수", "목", "금", "토"];
-
-      type ScheduleEvent = {
-        id: string;
-        title: string;
-        event_date: string;
-        start_time: string;
-        end_time: string;
-        notes: string;
-      };
-
-      function fmtDate(d: Date): string {
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      }
-      function startOfWeek(d: Date): Date {
-        const x = new Date(d);
-        x.setHours(0, 0, 0, 0);
-        x.setDate(x.getDate() - x.getDay());
-        return x;
-      }
-      function hourLabel(h: number): string {
-        const period = h < 12 ? "오전" : "오후";
-        const hour12 = h % 12 === 0 ? 12 : h % 12;
-        return `${period} ${hour12}시`;
-      }
-      function timeLabel(t: string): string {
-        const [h, m] = t.split(":").map(Number);
-        const period = h < 12 ? "오전" : "오후";
-        const hour12 = h % 12 === 0 ? 12 : h % 12;
-        return m === 0 ? `${period} ${hour12}시` : `${period} ${hour12}시 ${m}분`;
-      }
-
-      let weekStart = startOfWeek(new Date());
-      let weekEvents: ScheduleEvent[] = [];
-
-      function renderCalGrid() {
-        const todayStr = fmtDate(new Date());
-        const days = Array.from({ length: 7 }, (_, i) => {
-          const d = new Date(weekStart);
-          d.setDate(d.getDate() + i);
-          return d;
-        });
-
-        const weekEnd = days[6];
-        $("weekRangeLabel").textContent = `${fmtDate(weekStart)} ~ ${fmtDate(weekEnd)}`;
-
-        const gridHeight = CAL_HOURS.length * CAL_ROW_PX;
-
-        let html = `<div class="cal-corner"></div>`;
-        days.forEach((d) => {
-          const dStr = fmtDate(d);
-          html += `
-            <div class="cal-day-header">
-              <div class="cal-dow">${DOW[d.getDay()]}</div>
-              <div class="cal-dom ${dStr === todayStr ? "today" : ""}">${d.getDate()}</div>
-            </div>
-          `;
-        });
-
-        html += `<div class="cal-hourcol" style="height:${gridHeight}px">`;
-        CAL_HOURS.forEach((h, i) => {
-          html += `<span class="cal-hour-label" style="top:${i * CAL_ROW_PX}px">${hourLabel(h)}</span>`;
-        });
-        html += `</div>`;
-
-        days.forEach((d) => {
-          const dStr = fmtDate(d);
-          const dayEvents = weekEvents.filter((e) => e.event_date === dStr);
-          html += `<div class="cal-daycol" style="height:${gridHeight}px">`;
-          dayEvents.forEach((e) => {
-            const [sh, sm] = e.start_time.split(":").map(Number);
-            const [eh, em] = e.end_time.split(":").map(Number);
-            const top = (sh * 60 + sm - CAL_START_HOUR * 60) * (CAL_ROW_PX / 60);
-            const height = Math.max((eh * 60 + em - (sh * 60 + sm)) * (CAL_ROW_PX / 60), 22);
-            html += `
-              <div class="cal-event" data-id="${e.id}" style="top:${top}px;height:${height}px">
-                <div class="cal-event-title">${escapeHtml(e.title)}</div>
-                <div class="cal-event-time">${timeLabel(e.start_time)}~${timeLabel(e.end_time)}</div>
-              </div>
-            `;
-          });
-          html += `</div>`;
-        });
-
-        $("calGrid").innerHTML = html;
-
-        $("calGrid").querySelectorAll<HTMLElement>(".cal-event").forEach((el) =>
-          el.addEventListener("click", () => openEventDetail(el.dataset.id!))
-        );
-      }
-
-      async function loadWeekEvents() {
-        const days7 = new Date(weekStart);
-        days7.setDate(days7.getDate() + 6);
-        const { data, error } = await supabase
-          .from("schedule_events")
-          .select("*")
-          .gte("event_date", fmtDate(weekStart))
-          .lte("event_date", fmtDate(days7));
-        if (error) {
-          console.error(error);
-          weekEvents = [];
-        } else {
-          weekEvents = data ?? [];
-        }
-        renderCalGrid();
-      }
-
-      $("weekPrevBtn").addEventListener("click", () => {
-        weekStart.setDate(weekStart.getDate() - 7);
-        loadWeekEvents();
-      });
-      $("weekNextBtn").addEventListener("click", () => {
-        weekStart.setDate(weekStart.getDate() + 7);
-        loadWeekEvents();
-      });
-      $("weekTodayBtn").addEventListener("click", () => {
-        weekStart = startOfWeek(new Date());
-        loadWeekEvents();
-      });
-
-      // ── 일정 추가 ──
-      $("addEventBtn").addEventListener("click", () => {
-        $<HTMLInputElement>("eventTitle").value = "";
-        $<HTMLInputElement>("eventDate").value = fmtDate(new Date());
-        $<HTMLInputElement>("eventStart").value = "16:00";
-        $<HTMLInputElement>("eventEnd").value = "17:00";
-        $<HTMLTextAreaElement>("eventNotes").value = "";
-        $("eventFormError").textContent = "";
-        $("eventModal").classList.add("show");
-      });
-      $("eventModalCancel").addEventListener("click", () => $("eventModal").classList.remove("show"));
-
-      $("eventModalSave").addEventListener("click", async () => {
-        const title = $<HTMLInputElement>("eventTitle").value.trim();
-        const date = $<HTMLInputElement>("eventDate").value;
-        const start = $<HTMLInputElement>("eventStart").value;
-        const end = $<HTMLInputElement>("eventEnd").value;
-        const notes = $<HTMLTextAreaElement>("eventNotes").value.trim();
-        const errorEl = $("eventFormError");
-
-        if (!title || !date || !start || !end) {
-          errorEl.textContent = "제목, 일자, 시작/종료 시간을 입력해주세요.";
-          return;
-        }
-        if (start >= end) {
-          errorEl.textContent = "종료 시간은 시작 시간보다 늦어야 합니다.";
-          return;
-        }
-
-        const { error } = await supabase
-          .from("schedule_events")
-          .insert({ title, event_date: date, start_time: start, end_time: end, notes });
-
-        if (error) {
-          errorEl.textContent = "등록에 실패했습니다: " + error.message;
-          return;
-        }
-
-        $("eventModal").classList.remove("show");
-        loadWeekEvents();
-      });
-
-      // ── 일정 상세 ──
-      let viewingEventId: string | null = null;
-
-      function openEventDetail(id: string) {
-        const e = weekEvents.find((x) => x.id === id);
-        if (!e) return;
-        viewingEventId = id;
-        $("eventDetailTitle").textContent = e.title;
-        $("eventDetailTime").textContent = `${e.event_date} · ${timeLabel(e.start_time)} ~ ${timeLabel(e.end_time)}`;
-        $("eventDetailNotes").textContent = e.notes || "참고 내용이 없습니다.";
-        $("eventDetailModal").classList.add("show");
-      }
-      $("eventDetailClose").addEventListener("click", () => $("eventDetailModal").classList.remove("show"));
-      $("eventDetailDelete").addEventListener("click", async () => {
-        if (!viewingEventId) return;
-        if (!confirm("이 일정을 삭제할까요?")) return;
-        await supabase.from("schedule_events").delete().eq("id", viewingEventId);
-        $("eventDetailModal").classList.remove("show");
-        loadWeekEvents();
-      });
 
       // ── 학생 목록 ──
       async function loadStudents() {
@@ -818,7 +553,6 @@ import "../../styles/panel.css";
       loadStudents();
       loadCommonQuestions();
       loadIndividualQuestions();
-      loadWeekEvents();
     </script>
   </body>
 </html>
