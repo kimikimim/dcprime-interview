@@ -265,12 +265,47 @@ import "../../styles/panel.css";
         renderStudents();
       }
 
-      function renderStudents() {
+      type StudentProgressStats = {
+        commonTotal: number;
+        individualTotalByStudent: Map<string, number>;
+        commonAnsweredByStudent: Map<string, number>;
+        individualAnsweredByStudent: Map<string, number>;
+      };
+
+      async function loadStudentProgressStats(): Promise<StudentProgressStats> {
+        const [{ count: commonTotal }, { data: targetRows }, { data: answerRows }] = await Promise.all([
+          supabase.from("custom_questions").select("id", { count: "exact", head: true }).eq("visibility", "common"),
+          supabase.from("custom_question_targets").select("student_id"),
+          supabase.from("custom_answers").select("student_id, answer_text, audio_path, custom_questions(visibility)"),
+        ]);
+
+        const individualTotalByStudent = new Map<string, number>();
+        ((targetRows ?? []) as any[]).forEach((r) => {
+          individualTotalByStudent.set(r.student_id, (individualTotalByStudent.get(r.student_id) ?? 0) + 1);
+        });
+
+        const commonAnsweredByStudent = new Map<string, number>();
+        const individualAnsweredByStudent = new Map<string, number>();
+        ((answerRows ?? []) as any[]).forEach((a) => {
+          const isAnswered = a.audio_path || (a.answer_text && a.answer_text.trim());
+          if (!isAnswered) return;
+          const visibility = a.custom_questions?.visibility;
+          const map = visibility === "common" ? commonAnsweredByStudent : visibility === "individual" ? individualAnsweredByStudent : null;
+          if (map) map.set(a.student_id, (map.get(a.student_id) ?? 0) + 1);
+        });
+
+        return { commonTotal: commonTotal ?? 0, individualTotalByStudent, commonAnsweredByStudent, individualAnsweredByStudent };
+      }
+
+      async function renderStudents() {
         const list = $("studentMgmtList");
         if (studentsCache.length === 0) {
           list.innerHTML = `<p class="empty-text">등록된 학생이 없습니다.</p>`;
           return;
         }
+
+        const stats = await loadStudentProgressStats();
+
         list.innerHTML = studentsCache
           .map((s) => {
             const appLines = (s.school ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
@@ -280,12 +315,17 @@ import "../../styles/panel.css";
                 : appLines.length === 1
                 ? appLines[0].split(",")[0]?.trim() ?? ""
                 : `${appLines[0].split(",")[0]?.trim() ?? ""} 외 ${appLines.length - 1}건`;
+            const commonDone = stats.commonAnsweredByStudent.get(s.id) ?? 0;
+            const individualTotal = stats.individualTotalByStudent.get(s.id) ?? 0;
+            const individualDone = stats.individualAnsweredByStudent.get(s.id) ?? 0;
+            const progressMeta = `공통 ${commonDone}/${stats.commonTotal} · 개별 ${individualDone}/${individualTotal}`;
             return `
               <div class="student-mgmt-card">
                 <div class="student-mgmt-avatar">${escapeHtml(s.name.slice(0, 1))}</div>
                 <div class="student-mgmt-info">
                   <div class="student-mgmt-name">${escapeHtml(s.name)}</div>
                   <div class="student-mgmt-meta">${escapeHtml(meta)}</div>
+                  <div class="student-mgmt-meta" style="margin-top:2px">${escapeHtml(progressMeta)}</div>
                 </div>
                 <div class="student-mgmt-actions">
                   <button class="btn-edit" data-id="${s.id}">수정</button>
