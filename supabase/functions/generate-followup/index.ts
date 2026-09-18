@@ -50,7 +50,7 @@ Deno.serve(async (req: Request) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.6-flash";
 
     const roleLine =
       typeof department === "string" && department.trim()

@@ -75,7 +75,7 @@ Deno.serve(async (req: Request) => {
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
-    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+    const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.6-flash";
 
     const geminiRes = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
