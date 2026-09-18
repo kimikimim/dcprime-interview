@@ -342,7 +342,12 @@ import "../../styles/panel.css";
         }
         container.innerHTML = `<p class="empty-text">불러오는 중...</p>`;
 
-        const [{ data: answerRows, error: answerError }, { data: sessionRows, error: sessionError }] = await Promise.all([
+        const [
+          { data: answerRows, error: answerError },
+          { data: sessionRows, error: sessionError },
+          { count: commonTotal },
+          { count: individualTotal },
+        ] = await Promise.all([
           supabase
             .from("custom_answers")
             .select("answer_text, audio_path, custom_questions(question_text, visibility)")
@@ -352,13 +357,41 @@ import "../../styles/panel.css";
             .select("*, mock_session_items(*)")
             .eq("student_id", studentId)
             .order("started_at", { ascending: false }),
+          supabase.from("custom_questions").select("id", { count: "exact", head: true }).eq("visibility", "common"),
+          supabase.from("custom_question_targets").select("student_id", { count: "exact", head: true }).eq("student_id", studentId),
         ]);
 
         if (answerError) console.error(answerError);
         if (sessionError) console.error(sessionError);
 
-        let html = `<h3 class="section-subtitle" style="margin:4px 0 10px">공통·개별 질문 답변</h3>`;
         const answered = ((answerRows ?? []) as any[]).filter((a) => a.audio_path || (a.answer_text && a.answer_text.trim()));
+        const commonAnswered = answered.filter((a) => a.custom_questions?.visibility === "common").length;
+        const individualAnswered = answered.filter((a) => a.custom_questions?.visibility === "individual").length;
+        const commonPct = commonTotal ? Math.round((commonAnswered / commonTotal) * 100) : 0;
+        const individualPct = individualTotal ? Math.round((individualAnswered / individualTotal) * 100) : 0;
+
+        function progressBar(label: string, done: number, total: number, pct: number): string {
+          return `
+            <div style="margin-bottom:14px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <span style="font-size:13px;font-weight:700;color:var(--black)">${label}</span>
+                <span style="font-size:13px;color:var(--gray-3)">${done}/${total} (${pct}%)</span>
+              </div>
+              <div style="height:8px;background:var(--gray-7);border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:${pct}%;background:var(--blue)"></div>
+              </div>
+            </div>
+          `;
+        }
+
+        let html = `
+          <div class="card" style="margin-bottom:16px">
+            ${progressBar("공통 질문", commonAnswered, commonTotal ?? 0, commonPct)}
+            ${progressBar("개별 질문", individualAnswered, individualTotal ?? 0, individualPct)}
+          </div>
+        `;
+
+        html += `<h3 class="section-subtitle" style="margin:4px 0 10px">공통·개별 질문 답변</h3>`;
         if (answered.length === 0) {
           html += `<p class="empty-text">등록된 답변이 없습니다.</p>`;
         } else {
