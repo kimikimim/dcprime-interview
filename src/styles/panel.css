@@ -21,6 +21,10 @@
   --shadow-lg: 0 8px 32px rgba(0,0,0,.14);
 }
 
+/* panel.css가 tailwind 유틸리티(global.css)보다 뒤에 로드되어 .hidden(display:none)이
+   .btn-primary-sm 등 display를 지정하는 클래스에 밀리는 문제 방지 */
+.hidden { display: none !important; }
+
 .admin-body { display: flex; flex-direction: column; min-height: 100dvh; background: var(--gray-8); }
 
 .admin-header { background: #fff; border-bottom: 1px solid var(--gray-6); padding: env(safe-area-inset-top) 0 0; flex-shrink: 0; position: sticky; top: 0; z-index: 150; }
