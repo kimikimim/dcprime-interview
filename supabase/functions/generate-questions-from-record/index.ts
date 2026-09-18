@@ -33,8 +33,9 @@ const RESPONSE_SCHEMA = {
   required: ["questions"],
 };
 
-const PROMPT = `당신은 대학 수시 면접 전문 컨설턴트입니다. 첨부된 학생생활기록부(생기부) PDF를
-분석하여, 실제 대학 면접에서 나올 법한 예상 질문을 정확히 100개 생성하세요.
+function buildPrompt(count: number): string {
+  return `당신은 대학 수시 면접 전문 컨설턴트입니다. 첨부된 학생생활기록부(생기부) PDF를
+분석하여, 실제 대학 면접에서 나올 법한 예상 질문을 정확히 ${count}개 생성하세요.
 
 규칙:
 1. 각 질문은 생기부의 구체적인 내용(활동명, 과목, 세부능력 및 특기사항 등)을
@@ -46,7 +47,12 @@ const PROMPT = `당신은 대학 수시 면접 전문 컨설턴트입니다. 첨
 4. 같은 활동을 여러 각도(사실 확인 → 이유·동기 → 배운 점 → 다른 상황에 적용)로
    파고드는 질문도 섞어서, 꼬리질문 대비 훈련에도 쓰일 수 있게 한다.
 5. 각 질문마다 근거가 된 생기부 항목을 짧게 표기한다.
-6. 정확히 100개, 중복 없이 생성한다.`;
+6. 정확히 ${count}개, 중복 없이 생성한다.`;
+}
+
+const MIN_COUNT = 1;
+const MAX_COUNT = 150;
+const DEFAULT_COUNT = 30;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -60,13 +66,17 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { pdfBase64 } = await req.json();
+    const { pdfBase64, count } = await req.json();
     if (!pdfBase64) {
       return new Response(JSON.stringify({ error: "pdfBase64가 필요합니다." }), {
         status: 400,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });
     }
+    const requestedCount = Number(count);
+    const questionCount = Number.isFinite(requestedCount)
+      ? Math.min(MAX_COUNT, Math.max(MIN_COUNT, Math.round(requestedCount)))
+      : DEFAULT_COUNT;
 
     const apiKey = Deno.env.get("GEMINI_API_KEY");
     if (!apiKey) {
@@ -85,13 +95,13 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify({
           contents: [
             {
-              parts: [{ text: PROMPT }, { inline_data: { mime_type: "application/pdf", data: pdfBase64 } }],
+              parts: [{ text: buildPrompt(questionCount) }, { inline_data: { mime_type: "application/pdf", data: pdfBase64 } }],
             },
           ],
           generationConfig: {
             responseMimeType: "application/json",
             responseSchema: RESPONSE_SCHEMA,
-            maxOutputTokens: 16000,
+            maxOutputTokens: Math.min(30000, Math.max(2000, questionCount * 200)),
           },
         }),
       }
