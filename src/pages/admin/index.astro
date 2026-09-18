@@ -128,6 +128,10 @@ import "../../styles/panel.css";
             <div class="student-picker" id="mockStudentPicker">
               <p class="empty-text">학생 목록을 불러오는 중...</p>
             </div>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--black);cursor:pointer">
+              <input type="checkbox" id="mockFollowupToggle" checked />
+              꼬리질문 포함 (AI가 답변을 듣고 실시간으로 생성)
+            </label>
             <button class="btn-primary-sm" id="mockAssignSubmit" style="margin-top:12px">모의면접 만들기</button>
           </div>
           <div id="mockAssignList" style="display:flex;flex-direction:column;gap:10px">
@@ -862,7 +866,7 @@ import "../../styles/panel.css";
       async function loadMockAssignments() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, student_id, status, started_at")
+          .select("id, student_id, status, started_at, followup_enabled")
           .order("started_at", { ascending: false });
         const list = $("mockAssignList");
         if (error) {
@@ -881,7 +885,7 @@ import "../../styles/panel.css";
               <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
                   <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)}</p>
-                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
+                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
                 </div>
                 <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>
               </div>
@@ -901,10 +905,12 @@ import "../../styles/panel.css";
           alert("대상 학생을 한 명 이상 선택해주세요.");
           return;
         }
+        const followupEnabled = $<HTMLInputElement>("mockFollowupToggle").checked;
         const rows = [...mockSelectedStudentIds].map((student_id) => ({
           student_id,
           planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
           status: "assigned",
+          followup_enabled: followupEnabled,
         }));
         const { error } = await supabase.from("mock_sessions").insert(rows);
         if (error) {

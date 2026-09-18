@@ -497,6 +497,7 @@ import "../styles/panel.css";
 
       let mockSessionId: string | null = null;
       let mockPlannedDuration = 0;
+      let mockFollowupEnabled = true;
       let mockTimerInterval: number | null = null;
       let mockDeadline = 0;
       let mockSequenceOrder = 0;
@@ -531,7 +532,7 @@ import "../styles/panel.css";
       async function checkMockAssignment() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, planned_duration_seconds")
+          .select("id, planned_duration_seconds, followup_enabled")
           .eq("student_id", session.id)
           .eq("status", "assigned")
           .order("started_at", { ascending: true })
@@ -543,6 +544,7 @@ import "../styles/panel.css";
         if (data) {
           mockSessionId = data.id;
           mockPlannedDuration = data.planned_duration_seconds;
+          mockFollowupEnabled = data.followup_enabled ?? true;
           $("mockAssignedNote").textContent = "선생님이 배정한 모의면접이 있습니다.";
           $("mockStartBtn").classList.remove("hidden");
         } else {
@@ -676,7 +678,7 @@ import "../styles/panel.css";
         let transcript: string | null = null;
         let followupQuestion: string | null = null;
 
-        if (item.type === "main") {
+        if (item.type === "main" && mockFollowupEnabled) {
           try {
             const audioBase64 = await blobToBase64(blob);
             const res = await fetch(`${supabaseUrl}/functions/v1/generate-followup`, {
@@ -720,7 +722,12 @@ import "../styles/panel.css";
           return;
         }
         if (prevItem.type === "main") {
-          showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
+          if (mockFollowupEnabled) {
+            showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
+          } else {
+            mockPairsRemaining -= 1;
+            goToNextMainOrClosing();
+          }
           return;
         }
         if (prevItem.type === "followup") {

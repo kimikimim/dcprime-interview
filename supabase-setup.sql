@@ -376,6 +376,9 @@ DROP POLICY IF EXISTS "anon delete interview_mock_sessions" ON interview.mock_se
 CREATE POLICY "anon delete interview_mock_sessions" ON interview.mock_sessions
   FOR DELETE TO anon USING (true);
 
+-- 난이도 조절: 배정 시 꼬리질문(AI 실시간 생성) 포함 여부 선택 가능
+ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS followup_enabled boolean NOT NULL DEFAULT true;
+
 DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon update interview_mock_sessions" ON interview.mock_sessions;
