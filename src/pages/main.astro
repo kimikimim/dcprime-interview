@@ -150,6 +150,25 @@ import "../styles/panel.css";
           <p style="font-size:15px;color:var(--black);margin-bottom:20px">모의면접이 종료되었습니다. 수고하셨어요!</p>
           <button class="btn-primary-sm" id="mockRestartBtn" style="padding:0 24px;height:40px;font-size:14px">다시 시작</button>
         </div>
+
+        <!-- 지난 모의면접 기록 -->
+        <div class="card" style="margin-top:16px">
+          <p class="form-label" style="margin-bottom:10px">지난 모의면접</p>
+          <div id="mockHistoryList" style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+            <p class="empty-text">불러오는 중...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 모의면접 기록 상세 모달 -->
+    <div class="modal-overlay" id="mockHistoryModal">
+      <div class="modal modal--form">
+        <h3 class="modal-title" id="mockHistoryTitle">모의면접</h3>
+        <div id="mockHistoryDetail" style="max-height:60vh;overflow-y:auto"></div>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn--cancel" id="mockHistoryClose">닫기</button>
+        </div>
       </div>
     </div>
 
@@ -732,7 +751,78 @@ import "../styles/panel.css";
           .eq("id", mockSessionId!);
         $("mockActive").classList.add("hidden");
         $("mockDone").classList.remove("hidden");
+        loadMockHistory();
       }
+
+      // ── 모의면접: 지난 기록 (질문/답변 다시 듣기) ──
+      async function loadMockHistory() {
+        const { data, error } = await supabase
+          .from("mock_sessions")
+          .select("id, started_at")
+          .eq("student_id", session.id)
+          .eq("status", "completed")
+          .order("started_at", { ascending: true });
+
+        const list = $("mockHistoryList");
+        if (error) {
+          list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+
+        const sessions = data ?? [];
+        if (sessions.length === 0) {
+          list.innerHTML = `<p class="empty-text">완료한 모의면접이 없습니다.</p>`;
+          return;
+        }
+
+        list.innerHTML = sessions
+          .map((s: any, i: number) => `<button type="button" class="btn-primary-sm mock-history-btn" data-id="${s.id}" data-round="${i + 1}">모의면접 ${i + 1}회차</button>`)
+          .join("");
+
+        list.querySelectorAll<HTMLButtonElement>(".mock-history-btn").forEach((btn) =>
+          btn.addEventListener("click", () => openMockHistoryDetail(btn.dataset.id!, Number(btn.dataset.round)))
+        );
+      }
+
+      async function openMockHistoryDetail(sessionId: string, round: number) {
+        $("mockHistoryTitle").textContent = `모의면접 ${round}회차`;
+        $("mockHistoryDetail").innerHTML = `<p class="empty-text">불러오는 중...</p>`;
+        $("mockHistoryModal").classList.add("show");
+
+        const { data, error } = await supabase
+          .from("mock_session_items")
+          .select("*")
+          .eq("session_id", sessionId)
+          .order("sequence_order", { ascending: true });
+
+        if (error) {
+          $("mockHistoryDetail").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+
+        const items = (data ?? []) as any[];
+        if (items.length === 0) {
+          $("mockHistoryDetail").innerHTML = `<p class="empty-text">기록이 없습니다.</p>`;
+          return;
+        }
+
+        $("mockHistoryDetail").innerHTML = items
+          .map(
+            (it) => `
+              <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--gray-6)">
+                <p style="font-size:12px;color:var(--blue);font-weight:700;margin-bottom:4px">${mockProgressLabel(it.item_type)}</p>
+                <p style="font-size:14px;color:var(--black);margin-bottom:8px;line-height:1.6">${escapeHtml(it.question_text)}</p>
+                ${it.audio_path ? `<audio controls src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
+                ${it.transcript ? `<p style="font-size:13px;color:var(--gray-2);margin-top:8px;white-space:pre-wrap;line-height:1.6">받아쓰기: ${escapeHtml(it.transcript)}</p>` : ""}
+              </div>
+            `
+          )
+          .join("");
+      }
+
+      $("mockHistoryClose").addEventListener("click", () => $("mockHistoryModal").classList.remove("show"));
 
       $("mockStartBtn").addEventListener("click", startMockSession);
       $("mockRecordBtn").addEventListener("click", toggleMockRecording);
@@ -741,7 +831,10 @@ import "../styles/panel.css";
         $("mockIdle").classList.remove("hidden");
         checkMockAssignment();
       });
-      document.querySelector<HTMLButtonElement>('.tab-btn[data-tab="mock"]')?.addEventListener("click", checkMockAssignment);
+      document.querySelector<HTMLButtonElement>('.tab-btn[data-tab="mock"]')?.addEventListener("click", () => {
+        checkMockAssignment();
+        loadMockHistory();
+      });
 
       // ── 오늘의 목표 ──
       function todayStr(): string {
@@ -828,6 +921,7 @@ import "../styles/panel.css";
       loadCommonQuestions();
       loadPersonalQuestions();
       checkMockAssignment();
+      loadMockHistory();
     </script>
   </body>
 </html>
