@@ -77,6 +77,7 @@ import "../../styles/panel.css";
         <div class="subtab-row">
           <button class="subtab-btn active" data-subtab="common">공통 질문</button>
           <button class="subtab-btn" data-subtab="individual">개별 질문</button>
+          <button class="subtab-btn" data-subtab="mock">모의면접</button>
         </div>
 
         <!-- 공통 질문 -->
@@ -103,6 +104,20 @@ import "../../styles/panel.css";
             <button class="btn-primary-sm" id="individualQuestionSubmit" style="margin-top:12px">등록 (선택한 학생에게만)</button>
           </div>
           <div id="individualQuestionList" style="display:flex;flex-direction:column;gap:10px">
+            <p class="empty-text">불러오는 중...</p>
+          </div>
+        </div>
+
+        <!-- 모의면접 -->
+        <div class="subtab-panel" id="subtabMock">
+          <div class="card" style="margin-bottom:16px">
+            <p class="form-label">대상 학생 (여러 명 선택 가능)</p>
+            <div class="student-picker" id="mockStudentPicker">
+              <p class="empty-text">학생 목록을 불러오는 중...</p>
+            </div>
+            <button class="btn-primary-sm" id="mockAssignSubmit" style="margin-top:12px">모의면접 만들기</button>
+          </div>
+          <div id="mockAssignList" style="display:flex;flex-direction:column;gap:10px">
             <p class="empty-text">불러오는 중...</p>
           </div>
         </div>
@@ -276,6 +291,7 @@ import "../../styles/panel.css";
         );
 
         renderStudentPicker();
+        renderMockStudentPicker();
         renderStudyStudentOptions();
       }
 
@@ -385,6 +401,7 @@ import "../../styles/panel.css";
       const authoringSubtabPanels: Record<string, HTMLElement> = {
         common: $("subtabCommon"),
         individual: $("subtabIndividual"),
+        mock: $("subtabMock"),
       };
       authoringSubtabBtns.forEach((b) =>
         b.addEventListener("click", () => {
@@ -558,6 +575,97 @@ import "../../styles/panel.css";
         loadIndividualQuestions();
       });
 
+      // ── 문제출제: 모의면접 배정 ──
+      let mockSelectedStudentIds = new Set<string>();
+
+      function renderMockStudentPicker() {
+        const picker = $("mockStudentPicker");
+        if (studentsCache.length === 0) {
+          picker.innerHTML = `<p class="empty-text">등록된 학생이 없습니다.</p>`;
+          return;
+        }
+        picker.innerHTML = studentsCache
+          .map(
+            (s) => `
+              <button type="button" class="student-toggle ${mockSelectedStudentIds.has(s.id) ? "selected" : ""}" data-id="${s.id}">
+                ${escapeHtml(s.name)}
+              </button>
+            `
+          )
+          .join("");
+        picker.querySelectorAll<HTMLButtonElement>(".student-toggle").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            const id = btn.dataset.id!;
+            if (mockSelectedStudentIds.has(id)) mockSelectedStudentIds.delete(id);
+            else mockSelectedStudentIds.add(id);
+            btn.classList.toggle("selected");
+          })
+        );
+      }
+
+      function mockStatusLabel(status: string): string {
+        if (status === "assigned") return "배정됨 (대기 중)";
+        if (status === "in_progress") return "진행 중";
+        return "완료";
+      }
+
+      async function loadMockAssignments() {
+        const { data, error } = await supabase
+          .from("mock_sessions")
+          .select("id, student_id, status, started_at")
+          .order("started_at", { ascending: false });
+        const list = $("mockAssignList");
+        if (error) {
+          list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
+          console.error(error);
+          return;
+        }
+        if (!data || data.length === 0) {
+          list.innerHTML = `<p class="empty-text">배정된 모의면접이 없습니다.</p>`;
+          return;
+        }
+        list.innerHTML = data
+          .map((row: any) => {
+            const name = studentsCache.find((s) => s.id === row.student_id)?.name ?? "알 수 없음";
+            return `
+              <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+                <div>
+                  <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)}</p>
+                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
+                </div>
+                <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>
+              </div>
+            `;
+          })
+          .join("");
+        list.querySelectorAll<HTMLButtonElement>(".delete-mock-assignment").forEach((btn) =>
+          btn.addEventListener("click", async () => {
+            await supabase.from("mock_sessions").delete().eq("id", btn.dataset.id!);
+            loadMockAssignments();
+          })
+        );
+      }
+
+      $("mockAssignSubmit").addEventListener("click", async () => {
+        if (mockSelectedStudentIds.size === 0) {
+          alert("대상 학생을 한 명 이상 선택해주세요.");
+          return;
+        }
+        const rows = [...mockSelectedStudentIds].map((student_id) => ({
+          student_id,
+          planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
+          status: "assigned",
+        }));
+        const { error } = await supabase.from("mock_sessions").insert(rows);
+        if (error) {
+          alert("모의면접 배정에 실패했습니다: " + error.message);
+          return;
+        }
+        mockSelectedStudentIds.clear();
+        renderMockStudentPicker();
+        loadMockAssignments();
+      });
+
       // ── 추가/수정 모달 ──
       let editingId: string | null = null;
 
@@ -663,6 +771,7 @@ import "../../styles/panel.css";
       loadStudents();
       loadCommonQuestions();
       loadIndividualQuestions();
+      loadMockAssignments();
     </script>
   </body>
 </html>

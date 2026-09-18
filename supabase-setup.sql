@@ -355,15 +355,26 @@ CREATE INDEX IF NOT EXISTS idx_interview_schedule_events_date ON interview.sched
 --    꼬리질문: 학생이 본질문에 음성으로 답변 -> Edge Function이 Gemini로
 --             STT + 꼬리질문 생성을 한 번에 처리 -> 실시간 생성, DB에는 결과만 저장
 -- ────────────────────────────────────────────
+-- status: assigned(관리자가 배정, 학생이 아직 시작 전) -> in_progress -> completed
 CREATE TABLE IF NOT EXISTS interview.mock_sessions (
   id                       uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
   student_id               uuid        NOT NULL REFERENCES interview.students(id) ON DELETE CASCADE,
   planned_duration_seconds int         NOT NULL,
-  status                   text        NOT NULL DEFAULT 'in_progress' CHECK (status IN ('in_progress', 'completed')),
+  status                   text        NOT NULL DEFAULT 'assigned' CHECK (status IN ('assigned', 'in_progress', 'completed')),
   started_at               timestamptz NOT NULL DEFAULT now(),
   ended_at                 timestamptz
 );
 ALTER TABLE interview.mock_sessions ENABLE ROW LEVEL SECURITY;
+
+-- 이미 만들어둔 테이블이 있다면 예전 CHECK 제약(assigned 상태 없음)을 최신 상태로 갱신
+ALTER TABLE interview.mock_sessions ALTER COLUMN status SET DEFAULT 'assigned';
+ALTER TABLE interview.mock_sessions DROP CONSTRAINT IF EXISTS mock_sessions_status_check;
+ALTER TABLE interview.mock_sessions ADD CONSTRAINT mock_sessions_status_check CHECK (status IN ('assigned', 'in_progress', 'completed'));
+
+-- 관리자가 배정 취소할 수 있어야 하므로 delete 정책도 추가
+DROP POLICY IF EXISTS "anon delete interview_mock_sessions" ON interview.mock_sessions;
+CREATE POLICY "anon delete interview_mock_sessions" ON interview.mock_sessions
+  FOR DELETE TO anon USING (true);
 
 DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;

@@ -128,7 +128,8 @@ import "../styles/panel.css";
         <div id="mockIdle" class="card" style="text-align:center;padding:32px 20px">
           <p style="font-size:15px;color:var(--black);line-height:1.6;margin-bottom:6px">10~15분 랜덤 시간의 모의면접을 진행합니다.</p>
           <p class="empty-text" style="margin-bottom:20px">자기소개 → 본질문 → 꼬리질문 → 마무리 질문 순서로 진행되며,<br />답변은 음성으로 녹음됩니다. 마이크 권한을 허용해주세요.</p>
-          <button class="btn-primary-sm" id="mockStartBtn" style="padding:0 24px;height:40px;font-size:14px">모의면접 시작</button>
+          <p class="empty-text" id="mockAssignedNote" style="margin-bottom:14px">배정 여부를 확인하는 중...</p>
+          <button class="btn-primary-sm hidden" id="mockStartBtn" style="padding:0 24px;height:40px;font-size:14px">모의면접 시작</button>
         </div>
 
         <!-- 진행 화면 -->
@@ -476,6 +477,7 @@ import "../styles/panel.css";
       type MockPoolQuestion = { id: string; question_text: string };
 
       let mockSessionId: string | null = null;
+      let mockPlannedDuration = 0;
       let mockTimerInterval: number | null = null;
       let mockDeadline = 0;
       let mockSequenceOrder = 0;
@@ -507,28 +509,51 @@ import "../styles/panel.css";
         return [...common, ...individual];
       }
 
+      async function checkMockAssignment() {
+        const { data, error } = await supabase
+          .from("mock_sessions")
+          .select("id, planned_duration_seconds")
+          .eq("student_id", session.id)
+          .eq("status", "assigned")
+          .order("started_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) console.error(error);
+
+        if (data) {
+          mockSessionId = data.id;
+          mockPlannedDuration = data.planned_duration_seconds;
+          $("mockAssignedNote").textContent = "선생님이 배정한 모의면접이 있습니다.";
+          $("mockStartBtn").classList.remove("hidden");
+        } else {
+          mockSessionId = null;
+          $("mockAssignedNote").textContent = "아직 배정된 모의면접이 없습니다. 선생님께 문의해주세요.";
+          $("mockStartBtn").classList.add("hidden");
+        }
+      }
+
       async function startMockSession() {
+        if (!mockSessionId) return;
+
         mockPool = await loadMockQuestionPool();
         if (mockPool.length === 0) {
           alert("아직 등록된 질문이 없습니다. 관리자에게 문의해주세요.");
           return;
         }
 
-        const plannedDuration = 600 + Math.floor(Math.random() * 301); // 10~15분
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from("mock_sessions")
-          .insert({ student_id: session.id, planned_duration_seconds: plannedDuration })
-          .select()
-          .single();
-        if (error || !data) {
-          alert("모의면접 세션 생성에 실패했습니다: " + error?.message);
+          .update({ status: "in_progress", started_at: new Date().toISOString() })
+          .eq("id", mockSessionId);
+        if (error) {
+          alert("모의면접 시작에 실패했습니다: " + error.message);
           return;
         }
 
-        mockSessionId = data.id;
         mockSequenceOrder = 0;
         mockPairsRemaining = 1 + Math.round(Math.random()); // 1~2개
-        mockDeadline = Date.now() + plannedDuration * 1000;
+        mockDeadline = Date.now() + mockPlannedDuration * 1000;
 
         $("mockIdle").classList.add("hidden");
         $("mockDone").classList.add("hidden");
@@ -714,7 +739,9 @@ import "../styles/panel.css";
       $("mockRestartBtn").addEventListener("click", () => {
         $("mockDone").classList.add("hidden");
         $("mockIdle").classList.remove("hidden");
+        checkMockAssignment();
       });
+      document.querySelector<HTMLButtonElement>('.tab-btn[data-tab="mock"]')?.addEventListener("click", checkMockAssignment);
 
       // ── 오늘의 목표 ──
       function todayStr(): string {
@@ -800,6 +827,7 @@ import "../styles/panel.css";
       loadGoals();
       loadCommonQuestions();
       loadPersonalQuestions();
+      checkMockAssignment();
     </script>
   </body>
 </html>
