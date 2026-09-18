@@ -95,6 +95,19 @@ import "../../styles/panel.css";
         <!-- 개별 질문 -->
         <div class="subtab-panel" id="subtabIndividual">
           <div class="card" style="margin-bottom:16px">
+            <p class="form-label">생기부로 질문 자동 생성 (AI)</p>
+            <p class="form-hint" style="margin-bottom:10px">학생 1명을 선택하고 생기부 PDF를 업로드하면, AI가 예상 질문 100개를 생성합니다. 검토 후 원하는 것만 등록하세요.</p>
+            <select class="form-input" id="aiGenStudentSelect" style="margin-bottom:10px">
+              <option value="">학생 선택</option>
+            </select>
+            <input type="file" accept="application/pdf" id="aiGenFileInput" class="form-input" style="margin-bottom:10px;padding:8px 12px" />
+            <button class="btn-primary-sm" id="aiGenSubmitBtn">AI 질문 생성</button>
+            <p class="student-mgmt-meta" id="aiGenStatus" style="margin-top:8px"></p>
+          </div>
+
+          <div id="aiGenResults" class="hidden" style="margin-bottom:16px"></div>
+
+          <div class="card" style="margin-bottom:16px">
             <p class="form-label">질문 내용 <span class="form-hint" style="display:inline;margin:0">(여러 개는 세미콜론(;)으로 구분, 번호는 자동 제거)</span></p>
             <textarea class="form-input" id="individualQuestionInput" rows="5" placeholder={"선택한 학생에게만 보여줄 질문을 입력하세요\n\n여러 개를 한 번에 등록하려면:\n1. 질문내용;\n2. 질문내용;\n3. 질문내용;"} style="height:auto;padding:10px 12px;resize:vertical;margin-bottom:12px"></textarea>
             <p class="form-label">대상 학생 (여러 명 선택 가능)</p>
@@ -181,7 +194,7 @@ import "../../styles/panel.css";
     </div>
 
     <script>
-      import { supabase } from "../../lib/supabase";
+      import { supabase, supabaseUrl, supabaseAnonKey } from "../../lib/supabase";
 
       const SESSION_KEY = "admin_authed";
       if (sessionStorage.getItem(SESSION_KEY) !== "ok") {
@@ -293,6 +306,7 @@ import "../../styles/panel.css";
         renderStudentPicker();
         renderMockStudentPicker();
         renderStudyStudentOptions();
+        renderAiGenStudentOptions();
       }
 
       // ── 학습 현황: 학생별 답변/모의면접 녹음 확인 ──
@@ -486,6 +500,169 @@ import "../../styles/panel.css";
         input.value = "";
         loadCommonQuestions();
       });
+
+      // ── 문제출제: 생기부 기반 AI 질문 생성 ──
+      type AiGenQuestion = { category: string; source: string; question: string };
+      let aiGenQuestions: AiGenQuestion[] = [];
+
+      function renderAiGenStudentOptions() {
+        const select = $<HTMLSelectElement>("aiGenStudentSelect");
+        const prevValue = select.value;
+        select.innerHTML =
+          `<option value="">학생 선택</option>` +
+          studentsCache.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+        if (prevValue && studentsCache.some((s) => s.id === prevValue)) {
+          select.value = prevValue;
+        }
+      }
+
+      function fileToBase64(file: File): Promise<string> {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(",")[1] ?? "");
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function renderAiGenResults() {
+        const container = $("aiGenResults");
+        if (aiGenQuestions.length === 0) {
+          container.classList.add("hidden");
+          container.innerHTML = "";
+          return;
+        }
+
+        const groups = new Map<string, { q: AiGenQuestion; index: number }[]>();
+        aiGenQuestions.forEach((q, index) => {
+          if (!groups.has(q.category)) groups.set(q.category, []);
+          groups.get(q.category)!.push({ q, index });
+        });
+
+        let html = "";
+        groups.forEach((items, category) => {
+          html += `
+            <div class="card" style="margin-bottom:12px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+                <p class="form-label" style="margin:0">${escapeHtml(category)} (${items.length})</p>
+                <button type="button" class="ai-select-all" data-category="${escapeHtml(category)}"
+                  style="background:none;border:none;padding:0;font-size:12px;font-weight:700;color:var(--blue);cursor:pointer">전체 선택</button>
+              </div>
+              ${items
+                .map(
+                  ({ q, index }) => `
+                    <label style="display:flex;align-items:flex-start;gap:8px;margin-bottom:10px;font-size:13px;line-height:1.5;cursor:pointer">
+                      <input type="checkbox" class="ai-question-checkbox" data-index="${index}" style="margin-top:3px" />
+                      <span>${escapeHtml(q.question)}<br/><span style="color:var(--gray-3);font-size:11px">${escapeHtml(q.source)}</span></span>
+                    </label>
+                  `
+                )
+                .join("")}
+            </div>
+          `;
+        });
+        html += `<button class="btn-primary-sm" id="aiGenRegisterBtn" style="margin-bottom:16px">선택한 질문 등록</button>`;
+
+        container.innerHTML = html;
+        container.classList.remove("hidden");
+
+        container.querySelectorAll<HTMLButtonElement>(".ai-select-all").forEach((btn) =>
+          btn.addEventListener("click", () => {
+            const category = btn.dataset.category!;
+            container.querySelectorAll<HTMLInputElement>(".ai-question-checkbox").forEach((cb) => {
+              const idx = Number(cb.dataset.index);
+              if (aiGenQuestions[idx]?.category === category) cb.checked = true;
+            });
+          })
+        );
+
+        $("aiGenRegisterBtn").addEventListener("click", registerSelectedAiQuestions);
+      }
+
+      $("aiGenSubmitBtn").addEventListener("click", async () => {
+        const studentId = $<HTMLSelectElement>("aiGenStudentSelect").value;
+        const fileInput = $<HTMLInputElement>("aiGenFileInput");
+        const file = fileInput.files?.[0];
+        const statusEl = $("aiGenStatus");
+        const btn = $<HTMLButtonElement>("aiGenSubmitBtn");
+
+        if (!studentId) {
+          alert("학생을 선택해주세요.");
+          return;
+        }
+        if (!file) {
+          alert("생기부 PDF 파일을 선택해주세요.");
+          return;
+        }
+
+        btn.disabled = true;
+        statusEl.textContent = "AI가 생기부를 분석하고 있습니다... (1~2분 정도 걸릴 수 있어요)";
+
+        try {
+          const pdfBase64 = await fileToBase64(file);
+          const res = await fetch(`${supabaseUrl}/functions/v1/generate-questions-from-record`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${supabaseAnonKey}`,
+              apikey: supabaseAnonKey,
+            },
+            body: JSON.stringify({ pdfBase64 }),
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(errText);
+          }
+
+          const json = await res.json();
+          aiGenQuestions = json.questions ?? [];
+          statusEl.textContent = `${aiGenQuestions.length}개 질문이 생성되었습니다. 아래에서 등록할 질문을 골라주세요.`;
+          renderAiGenResults();
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = "질문 생성에 실패했습니다.";
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      async function registerSelectedAiQuestions() {
+        const studentId = $<HTMLSelectElement>("aiGenStudentSelect").value;
+        const checked = document.querySelectorAll<HTMLInputElement>(".ai-question-checkbox:checked");
+        if (!studentId) {
+          alert("학생을 선택해주세요.");
+          return;
+        }
+        if (checked.length === 0) {
+          alert("등록할 질문을 한 개 이상 선택해주세요.");
+          return;
+        }
+
+        const selected = [...checked].map((cb) => aiGenQuestions[Number(cb.dataset.index)]);
+        const { data, error } = await supabase
+          .from("custom_questions")
+          .insert(selected.map((q) => ({ question_text: q.question, visibility: "individual" })))
+          .select();
+
+        if (error || !data) {
+          alert("등록에 실패했습니다: " + error?.message);
+          return;
+        }
+
+        const targets = data.map((q: any) => ({ custom_question_id: q.id, student_id: studentId }));
+        const { error: targetError } = await supabase.from("custom_question_targets").insert(targets);
+        if (targetError) {
+          alert("대상 학생 지정에 실패했습니다: " + targetError.message);
+          return;
+        }
+
+        aiGenQuestions = [];
+        renderAiGenResults();
+        $<HTMLInputElement>("aiGenFileInput").value = "";
+        $("aiGenStatus").textContent = "선택한 질문이 등록되었습니다.";
+        loadIndividualQuestions();
+      }
 
       // ── 문제출제: 개별 질문 ──
       async function loadIndividualQuestions() {
