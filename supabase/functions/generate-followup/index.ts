@@ -35,7 +35,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const { questionText, audioBase64, mimeType } = await req.json();
+    const { questionText, audioBase64, mimeType, department } = await req.json();
     if (!questionText || !audioBase64 || !mimeType) {
       return new Response(JSON.stringify({ error: "questionText, audioBase64, mimeType이 모두 필요합니다." }), {
         status: 400,
@@ -52,7 +52,12 @@ Deno.serve(async (req: Request) => {
     }
     const model = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
 
-    const prompt = `당신은 대학 입시 수시 면접관입니다. 아래는 면접에서 학생에게 던진 질문과, 그에 대한 학생의 음성 답변입니다.
+    const roleLine =
+      typeof department === "string" && department.trim()
+        ? `당신은 ${department.trim()} 전공 대학교수입니다.`
+        : `당신은 대학교수입니다.`;
+
+    const prompt = `${roleLine} 아래는 수시 면접에서 학생에게 던진 질문과, 그에 대한 학생의 음성 답변입니다.
 
 면접 질문: ${questionText}
 

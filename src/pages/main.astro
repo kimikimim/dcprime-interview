@@ -519,6 +519,12 @@ import "../styles/panel.css";
         return arr[Math.floor(Math.random() * arr.length)];
       }
 
+      // 학생의 지원 항목 중 첫 번째 학과를 꼬리질문 AI의 "전공 교수" 페르소나에 사용
+      function primaryDepartment(): string | null {
+        const apps = parseApplications(session.school);
+        return apps[0]?.department || null;
+      }
+
       async function loadMockQuestionPool(): Promise<MockPoolQuestion[]> {
         const [{ data: commonData }, { data: targetData }] = await Promise.all([
           supabase.from("custom_questions").select("id, question_text").eq("visibility", "common"),
@@ -688,7 +694,7 @@ import "../styles/panel.css";
                 Authorization: `Bearer ${supabaseAnonKey}`,
                 apikey: supabaseAnonKey,
               },
-              body: JSON.stringify({ questionText: item.questionText, audioBase64, mimeType }),
+              body: JSON.stringify({ questionText: item.questionText, audioBase64, mimeType, department: primaryDepartment() }),
             });
             if (res.ok) {
               const json = await res.json();
