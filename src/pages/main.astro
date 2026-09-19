@@ -247,11 +247,37 @@ import "../styles/panel.css";
           .filter((app) => app.university);
       }
 
-      function daysUntil(dateStr: string): number {
-        const target = new Date(dateStr + "T00:00:00");
+      // "2026-11-28", "12.5", "12. 5", "10/31~11/01", "11.26~11.30" 형식 지원 (연도 없으면 올해로 간주)
+      function parseInterviewDates(raw: string): { start: Date; end: Date } | null {
+        const text = raw.trim();
+        const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (iso) {
+          const d = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+          return { start: d, end: d };
+        }
+        const year = new Date().getFullYear();
+        const matches = [...text.matchAll(/(\d{1,2})\s*[./]\s*(\d{1,2})/g)]
+          .map((m) => ({ month: Number(m[1]), day: Number(m[2]) }))
+          .filter((m) => m.month >= 1 && m.month <= 12 && m.day >= 1 && m.day <= 31);
+        if (matches.length === 0) return null;
+        const first = matches[0];
+        const last = matches[matches.length - 1];
+        return {
+          start: new Date(year, first.month - 1, first.day),
+          end: new Date(year, last.month - 1, last.day),
+        };
+      }
+
+      // 날짜를 해석할 수 없으면 null (D-day 배지를 표시하지 않음). 기간이면 시작일 기준, 기간 중이면 D-0
+      function daysUntil(raw: string): number | null {
+        const parsed = parseInterviewDates(raw);
+        if (!parsed) return null;
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-        return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+        const dayMs = 1000 * 60 * 60 * 24;
+        const toStart = Math.round((parsed.start.getTime() - today.getTime()) / dayMs);
+        if (toStart < 0 && parsed.end.getTime() >= today.getTime()) return 0;
+        return toStart;
       }
 
       function ddayPill(days: number | null): string {
@@ -271,9 +297,10 @@ import "../styles/panel.css";
         }
 
         const sorted = [...applications].sort((a, b) => {
-          const da = a.interviewDate ? daysUntil(a.interviewDate) : Infinity;
-          const db = b.interviewDate ? daysUntil(b.interviewDate) : Infinity;
-          return da - db;
+          const da = daysUntil(a.interviewDate) ?? Infinity;
+          const db = daysUntil(b.interviewDate) ?? Infinity;
+          if (da === db) return 0;
+          return da < db ? -1 : 1;
         });
 
         container.innerHTML = sorted
