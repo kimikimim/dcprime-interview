@@ -438,11 +438,12 @@ import "../styles/panel.css";
 
             const blob = new Blob(chunks, { type: mimeType });
             const ext = mimeType.includes("webm") ? "webm" : "m4a";
-            const path = `${kind}/${session.id}/${questionId}.${ext}`;
+            // 재녹음 시 같은 URL이면 브라우저/CDN 캐시가 옛 녹음을 재생하므로 매번 새 경로 사용
+            const path = `${kind}/${session.id}/${questionId}-${Date.now()}.${ext}`;
+            const oldPath = myCustomAudioPaths[questionId];
 
             const { error: uploadError } = await supabase.storage.from("recordings").upload(path, blob, {
               contentType: mimeType,
-              upsert: true,
             });
             if (uploadError) {
               btn.disabled = false;
@@ -459,12 +460,28 @@ import "../styles/panel.css";
             if (error) {
               statusEl.textContent = "저장 실패";
               console.error(error);
+              supabase.storage.from("recordings").remove([path]);
               return;
             }
             myCustomAudioPaths[questionId] = path;
-            statusEl.textContent = "";
-            if (kind === "common") loadCommonQuestions();
-            else loadPersonalQuestions();
+            if (oldPath && oldPath !== path) supabase.storage.from("recordings").remove([oldPath]);
+
+            // 목록 전체를 다시 그리면 다른 칸의 저장 안 한 텍스트가 사라지므로 이 카드만 갱신
+            const card = btn.closest(".card");
+            let audioEl = card?.querySelector<HTMLAudioElement>("audio") ?? null;
+            if (!audioEl && card) {
+              audioEl = document.createElement("audio");
+              audioEl.controls = true;
+              audioEl.style.cssText = "width:100%;margin-top:10px;height:36px";
+              card.appendChild(audioEl);
+            }
+            if (audioEl) {
+              audioEl.src = recordingsUrl(path);
+              audioEl.load();
+            }
+            btn.textContent = "다시 녹음";
+            statusEl.textContent = "저장됨 ✓";
+            setTimeout(() => { if (statusEl.textContent === "저장됨 ✓") statusEl.textContent = ""; }, 2000);
           };
           recorder.start();
           activeCustomRecorders[questionId] = recorder;
