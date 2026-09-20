@@ -119,6 +119,12 @@ import "../../styles/panel.css";
             </div>
             <button class="btn-primary-sm" id="individualQuestionSubmit" style="margin-top:12px">등록 (선택한 학생에게만)</button>
           </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+            <p class="student-mgmt-meta" id="individualQuestionCount"></p>
+            <select class="form-input" id="individualFilterSelect" style="max-width:200px;height:36px;padding:0 10px">
+              <option value="">전체 학생</option>
+            </select>
+          </div>
           <div id="individualQuestionList" style="display:flex;flex-direction:column;gap:10px">
             <p class="empty-text">불러오는 중...</p>
           </div>
@@ -171,7 +177,7 @@ import "../../styles/panel.css";
         </div>
         <div class="form-group">
           <label class="form-label">비밀번호 <span class="form-required">*</span></label>
-          <input class="form-input" id="fieldPassword" type="text" placeholder="학생에게 부여할 비밀번호" maxlength="20" />
+          <input class="form-input" id="fieldPassword" type="text" inputmode="numeric" placeholder="숫자 4자리 (학생 로그인용)" maxlength="4" autocomplete="off" />
           <p class="form-hint" id="passwordHint">수정 시 비워두면 기존 비밀번호 유지</p>
         </div>
         <div class="form-group">
@@ -192,7 +198,7 @@ import "../../styles/panel.css";
     <div class="modal-overlay" id="deleteStudentModal">
       <div class="modal">
         <h3 class="modal-title">학생을 삭제할까요?</h3>
-        <p class="modal-desc">삭제하면 해당 학생의 로그인 정보가 함께 삭제되며 복구할 수 없습니다.</p>
+        <p class="modal-desc">삭제하면 로그인 정보와 함께 이 학생의 답변, 음성 녹음, 모의면접 기록이 모두 삭제되며 복구할 수 없습니다.</p>
         <div class="modal-actions">
           <button class="modal-btn modal-btn--cancel" id="deleteCancel">취소</button>
           <button class="modal-btn modal-btn--confirm" id="deleteConfirm">삭제</button>
@@ -224,6 +230,30 @@ import "../../styles/panel.css";
         const div = document.createElement("div");
         div.textContent = str;
         return div.innerHTML;
+      }
+
+      // Supabase API는 한 번에 최대 1000행만 돌려주므로, 그 이상은 나눠서 전부 가져옴
+      async function fetchAllRows<T = any>(
+        build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: any }>
+      ): Promise<T[]> {
+        const PAGE = 1000;
+        const rows: T[] = [];
+        for (let from = 0; ; from += PAGE) {
+          const { data, error } = await build(from, from + PAGE - 1);
+          if (error) throw error;
+          rows.push(...(data ?? []));
+          if (!data || data.length < PAGE) break;
+        }
+        return rows;
+      }
+
+      // 삭제된 질문/학생/세션에 딸린 녹음 파일이 저장소에 계속 남지 않도록 정리 (실패해도 화면 동작에는 영향 없음)
+      async function removeRecordings(paths: (string | null | undefined)[]) {
+        const list = paths.filter((p): p is string => !!p);
+        for (let i = 0; i < list.length; i += 100) {
+          const { error } = await supabase.storage.from("recordings").remove(list.slice(i, i + 100));
+          if (error) console.error("녹음 파일 삭제 실패:", error);
+        }
       }
 
       $("logoutBtn").addEventListener("click", () => {
@@ -270,6 +300,10 @@ import "../../styles/panel.css";
         }
         studentsCache = data ?? [];
         renderStudents();
+        // 이 목록들은 학생 이름을 studentsCache에서 찾아 표시하므로, 학생 정보가 준비된 뒤(그리고 학생이
+        // 추가/수정/삭제될 때마다) 다시 그려야 "알 수 없음"/"대상 없음"으로 잘못 나오지 않음
+        loadIndividualQuestions();
+        loadMockAssignments();
       }
 
       type StudentProgressStats = {
@@ -280,10 +314,14 @@ import "../../styles/panel.css";
       };
 
       async function loadStudentProgressStats(): Promise<StudentProgressStats> {
-        const [{ count: commonTotal }, { data: targetRows }, { data: answerRows }] = await Promise.all([
+        const [{ count: commonTotal }, targetRows, answerRows] = await Promise.all([
           supabase.from("custom_questions").select("id", { count: "exact", head: true }).eq("visibility", "common"),
-          supabase.from("custom_question_targets").select("student_id"),
-          supabase.from("custom_answers").select("student_id, answer_text, audio_path, custom_questions(visibility)"),
+          fetchAllRows((from, to) =>
+            supabase.from("custom_question_targets").select("student_id").order("custom_question_id").order("student_id").range(from, to)
+          ).catch((e) => { console.error(e); return []; }),
+          fetchAllRows((from, to) =>
+            supabase.from("custom_answers").select("student_id, answer_text, audio_path, custom_questions(visibility)").order("id").range(from, to)
+          ).catch((e) => { console.error(e); return []; }),
         ]);
 
         const individualTotalByStudent = new Map<string, number>();
@@ -354,6 +392,7 @@ import "../../styles/panel.css";
         renderMockStudentPicker();
         renderStudyStudentOptions();
         renderAiGenStudentOptions();
+        renderIndividualFilterOptions();
       }
 
       // ── 학습 현황: 학생별 답변/모의면접 녹음 확인 ──
@@ -381,8 +420,12 @@ import "../../styles/panel.css";
         loadStudyContent(select.value);
       }
 
+      let studyRequestSeq = 0;
+
       async function loadStudyContent(studentId: string) {
         const container = $("studyContent");
+        // 학생을 빠르게 바꿨을 때 늦게 도착한 이전 학생의 응답이 화면을 덮어쓰지 않도록 요청 번호로 구분
+        const mySeq = ++studyRequestSeq;
         if (!studentId) {
           container.innerHTML = `<p class="empty-text">학생을 선택하면 공통·개별 질문 답변과 모의면접 녹음을 확인할 수 있습니다.</p>`;
           return;
@@ -408,6 +451,7 @@ import "../../styles/panel.css";
           supabase.from("custom_question_targets").select("student_id", { count: "exact", head: true }).eq("student_id", studentId),
         ]);
 
+        if (mySeq !== studyRequestSeq) return;
         if (answerError) console.error(answerError);
         if (sessionError) console.error(sessionError);
 
@@ -448,7 +492,7 @@ import "../../styles/panel.css";
                 <div class="card" style="margin-bottom:10px">
                   <p style="font-size:12px;color:var(--gray-3);font-weight:700;margin-bottom:6px">${a.custom_questions?.visibility === "common" ? "공통 질문" : "개별 질문"}</p>
                   <p style="font-size:14px;color:var(--black);margin-bottom:10px">${escapeHtml(a.custom_questions?.question_text ?? "")}</p>
-                  ${a.audio_path ? `<audio controls src="${recordingsUrl(a.audio_path)}" style="width:100%;height:36px"></audio>` : ""}
+                  ${a.audio_path ? `<audio controls preload="none" src="${recordingsUrl(a.audio_path)}" style="width:100%;height:36px"></audio>` : ""}
                   ${a.answer_text ? `<p style="font-size:13px;color:var(--gray-2);margin-top:10px;white-space:pre-wrap;line-height:1.6">${escapeHtml(a.answer_text)}</p>` : ""}
                 </div>
               `
@@ -458,6 +502,14 @@ import "../../styles/panel.css";
 
         html += `<h3 class="section-subtitle" style="margin:24px 0 10px">모의면접 세션</h3>`;
         const sessions = (sessionRows ?? []) as any[];
+        // 학생 화면의 "모의면접 N회차"와 같은 번호가 되도록 완료된 세션을 시작 시각 순으로 번호 매김
+        const roundById = new Map<string, number>();
+        sessions
+          .filter((s) => s.status === "completed")
+          .sort((a, b) => (a.started_at < b.started_at ? -1 : 1))
+          .forEach((s, i) => roundById.set(s.id, i + 1));
+        const statusText = (s: any) =>
+          s.status === "completed" ? `모의면접 ${roundById.get(s.id)}회차 · 완료` : s.status === "assigned" ? "배정됨 (아직 시작 전)" : "진행 중";
         if (sessions.length === 0) {
           html += `<p class="empty-text">진행한 모의면접이 없습니다.</p>`;
         } else {
@@ -467,7 +519,7 @@ import "../../styles/panel.css";
               return `
                 <div class="card" style="margin-bottom:14px">
                   <p style="font-size:12px;color:var(--gray-3);font-weight:700;margin-bottom:12px">
-                    ${new Date(s.started_at).toLocaleString("ko-KR")} · ${s.status === "completed" ? "완료" : "진행 중"}
+                    ${statusText(s)} · ${new Date(s.started_at).toLocaleString("ko-KR")}
                   </p>
                   ${items
                     .map(
@@ -475,7 +527,7 @@ import "../../styles/panel.css";
                         <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--gray-6)">
                           <p style="font-size:12px;color:var(--blue);font-weight:700;margin-bottom:4px">${mockItemLabel(it.item_type)}</p>
                           <p style="font-size:14px;color:var(--black);margin-bottom:8px">${escapeHtml(it.question_text)}</p>
-                          ${it.audio_path ? `<audio controls src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
+                          ${it.audio_path ? `<audio controls preload="none" src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
                           ${it.transcript ? `<p style="font-size:13px;color:var(--gray-2);margin-top:8px;white-space:pre-wrap;line-height:1.6">받아쓰기: ${escapeHtml(it.transcript)}</p>` : ""}
                         </div>
                       `
@@ -562,10 +614,26 @@ import "../../styles/panel.css";
           .join("");
         list.querySelectorAll<HTMLButtonElement>(".delete-common-question").forEach((btn) =>
           btn.addEventListener("click", async () => {
-            await supabase.from("custom_questions").delete().eq("id", btn.dataset.id!);
-            loadCommonQuestions();
+            if (await deleteCustomQuestion(btn.dataset.id!)) loadCommonQuestions();
           })
         );
+      }
+
+      // 질문을 지우면 학생들이 쓴 답변/녹음도 함께 사라지므로, 몇 건이 지워지는지 알려주고 확인받음
+      async function deleteCustomQuestion(id: string): Promise<boolean> {
+        const { data: answers } = await supabase.from("custom_answers").select("answer_text, audio_path").eq("custom_question_id", id);
+        const filled = ((answers ?? []) as any[]).filter((a) => a.audio_path || (a.answer_text && a.answer_text.trim()));
+        const warning = filled.length
+          ? `이 질문을 삭제할까요?\n\n학생들이 작성한 답변 ${filled.length}건(텍스트/녹음)도 함께 삭제되며 복구할 수 없습니다.`
+          : "이 질문을 삭제할까요?";
+        if (!confirm(warning)) return false;
+        const { error } = await supabase.from("custom_questions").delete().eq("id", id);
+        if (error) {
+          alert("삭제에 실패했습니다: " + error.message);
+          return false;
+        }
+        await removeRecordings(filled.map((a) => a.audio_path));
+        return true;
       }
 
       $("commonQuestionSubmit").addEventListener("click", async () => {
@@ -584,6 +652,8 @@ import "../../styles/panel.css";
       // ── 문제출제: 생기부 기반 AI 질문 생성 ──
       type AiGenQuestion = { category: string; source: string; question: string };
       let aiGenQuestions: AiGenQuestion[] = [];
+      let aiGenTargetStudentId = "";
+      let aiGenTargetStudentName = "";
 
       function renderAiGenStudentOptions() {
         const select = $<HTMLSelectElement>("aiGenStudentSelect");
@@ -641,7 +711,7 @@ import "../../styles/panel.css";
             </div>
           `;
         });
-        html += `<button class="btn-primary-sm" id="aiGenRegisterBtn" style="margin-bottom:16px">선택한 질문 등록</button>`;
+        html += `<button class="btn-primary-sm" id="aiGenRegisterBtn" style="margin-bottom:16px">선택한 질문을 ${escapeHtml(aiGenTargetStudentName)} 학생에게 등록</button>`;
 
         container.innerHTML = html;
         container.classList.remove("hidden");
@@ -674,6 +744,11 @@ import "../../styles/panel.css";
           alert("생기부 PDF 파일을 선택해주세요.");
           return;
         }
+        // Gemini 요청 한도(20MB)에서 base64 변환(약 1.33배)을 감안한 상한
+        if (file.size > 14 * 1024 * 1024) {
+          alert("PDF 용량이 너무 큽니다 (14MB 이하만 가능). 스캔 해상도를 낮추거나 용량을 줄여 다시 올려주세요.");
+          return;
+        }
         const countInput = $<HTMLInputElement>("aiGenCountInput");
         const count = Math.min(150, Math.max(1, Math.round(Number(countInput.value)) || 30));
         countInput.value = String(count);
@@ -700,7 +775,9 @@ import "../../styles/panel.css";
 
           const json = await res.json();
           aiGenQuestions = json.questions ?? [];
-          statusEl.textContent = `${aiGenQuestions.length}개 질문이 생성되었습니다. 아래에서 등록할 질문을 골라주세요.`;
+          aiGenTargetStudentId = studentId;
+          aiGenTargetStudentName = studentsCache.find((s) => s.id === studentId)?.name ?? "";
+          statusEl.textContent = `${aiGenQuestions.length}개 질문이 생성되었습니다. ${aiGenTargetStudentName} 학생에게 등록할 질문을 골라주세요.`;
           renderAiGenResults();
         } catch (err) {
           console.error(err);
@@ -711,10 +788,11 @@ import "../../styles/panel.css";
       });
 
       async function registerSelectedAiQuestions() {
-        const studentId = $<HTMLSelectElement>("aiGenStudentSelect").value;
+        // 생성할 때 골라둔 학생에게만 등록 (그 사이 드롭다운을 바꿔도 다른 학생에게 잘못 들어가지 않음)
+        const studentId = aiGenTargetStudentId;
         const checked = document.querySelectorAll<HTMLInputElement>(".ai-question-checkbox:checked");
         if (!studentId) {
-          alert("학생을 선택해주세요.");
+          alert("생성된 질문이 없습니다. 먼저 질문을 생성해주세요.");
           return;
         }
         if (checked.length === 0) {
@@ -722,13 +800,18 @@ import "../../styles/panel.css";
           return;
         }
 
-        const selected = [...checked].map((cb) => aiGenQuestions[Number(cb.dataset.index)]);
+        const registerBtn = $<HTMLButtonElement>("aiGenRegisterBtn");
+        registerBtn.disabled = true;
+
+        const indexes = [...checked].map((cb) => Number(cb.dataset.index));
+        const selected = indexes.map((i) => aiGenQuestions[i]);
         const { data, error } = await supabase
           .from("custom_questions")
           .insert(selected.map((q) => ({ question_text: q.question, visibility: "individual" })))
           .select();
 
         if (error || !data) {
+          registerBtn.disabled = false;
           alert("등록에 실패했습니다: " + error?.message);
           return;
         }
@@ -736,31 +819,59 @@ import "../../styles/panel.css";
         const targets = data.map((q: any) => ({ custom_question_id: q.id, student_id: studentId }));
         const { error: targetError } = await supabase.from("custom_question_targets").insert(targets);
         if (targetError) {
-          alert("대상 학생 지정에 실패했습니다: " + targetError.message);
+          // 대상 지정에 실패하면 아무에게도 안 보이는 질문이 남으므로 방금 만든 질문을 되돌림
+          await supabase.from("custom_questions").delete().in("id", data.map((q: any) => q.id));
+          registerBtn.disabled = false;
+          alert("대상 학생 지정에 실패했습니다. 등록을 취소했으니 다시 시도해주세요: " + targetError.message);
           return;
         }
 
-        aiGenQuestions = [];
+        // 등록한 것만 목록에서 빼고, 아직 안 고른 질문은 남겨둠 (다시 생성하면 AI 비용이 또 듦)
+        const registered = new Set(indexes);
+        aiGenQuestions = aiGenQuestions.filter((_, i) => !registered.has(i));
         renderAiGenResults();
-        $<HTMLInputElement>("aiGenFileInput").value = "";
-        $("aiGenStatus").textContent = "선택한 질문이 등록되었습니다.";
+        if (aiGenQuestions.length === 0) $<HTMLInputElement>("aiGenFileInput").value = "";
+        $("aiGenStatus").textContent =
+          `${selected.length}개 질문을 ${aiGenTargetStudentName} 학생에게 등록했습니다.` +
+          (aiGenQuestions.length ? ` 남은 ${aiGenQuestions.length}개는 아래에서 계속 고를 수 있어요.` : "");
         loadIndividualQuestions();
       }
 
       // ── 문제출제: 개별 질문 ──
+      function renderIndividualFilterOptions() {
+        const select = $<HTMLSelectElement>("individualFilterSelect");
+        const prevValue = select.value;
+        select.innerHTML =
+          `<option value="">전체 학생</option>` +
+          studentsCache.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join("");
+        if (prevValue && studentsCache.some((s) => s.id === prevValue)) select.value = prevValue;
+        select.onchange = () => loadIndividualQuestions();
+      }
+
       async function loadIndividualQuestions() {
-        const { data, error } = await supabase
-          .from("custom_questions")
-          .select("*, custom_question_targets(student_id)")
-          .eq("visibility", "individual")
-          .order("created_at", { ascending: false });
         const list = $("individualQuestionList");
-        if (error) {
+        let allRows: any[];
+        try {
+          allRows = await fetchAllRows((from, to) =>
+            supabase
+              .from("custom_questions")
+              .select("*, custom_question_targets(student_id)")
+              .eq("visibility", "individual")
+              .order("created_at", { ascending: false })
+              .order("id")
+              .range(from, to)
+          );
+        } catch (error) {
           list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
           console.error(error);
           return;
         }
-        if (!data || data.length === 0) {
+        const filterId = $<HTMLSelectElement>("individualFilterSelect").value;
+        const data = filterId
+          ? allRows.filter((q) => (q.custom_question_targets ?? []).some((t: any) => t.student_id === filterId))
+          : allRows;
+        $("individualQuestionCount").textContent = `총 ${data.length}개`;
+        if (data.length === 0) {
           list.innerHTML = `<p class="empty-text">등록된 개별 질문이 없습니다.</p>`;
           return;
         }
@@ -784,8 +895,7 @@ import "../../styles/panel.css";
           .join("");
         list.querySelectorAll<HTMLButtonElement>(".delete-individual-question").forEach((btn) =>
           btn.addEventListener("click", async () => {
-            await supabase.from("custom_questions").delete().eq("id", btn.dataset.id!);
-            loadIndividualQuestions();
+            if (await deleteCustomQuestion(btn.dataset.id!)) loadIndividualQuestions();
           })
         );
       }
@@ -825,7 +935,9 @@ import "../../styles/panel.css";
         );
         const { error: targetError } = await supabase.from("custom_question_targets").insert(targets);
         if (targetError) {
-          alert("대상 학생 지정에 실패했습니다: " + targetError.message);
+          // 대상 없이 남은 질문이 생기지 않도록 방금 만든 질문을 되돌림 (입력한 내용은 그대로 두어 다시 시도 가능)
+          await supabase.from("custom_questions").delete().in("id", data.map((q: any) => q.id));
+          alert("대상 학생 지정에 실패했습니다. 등록을 취소했으니 다시 시도해주세요: " + targetError.message);
           return;
         }
 
@@ -900,7 +1012,21 @@ import "../../styles/panel.css";
           .join("");
         list.querySelectorAll<HTMLButtonElement>(".delete-mock-assignment").forEach((btn) =>
           btn.addEventListener("click", async () => {
-            await supabase.from("mock_sessions").delete().eq("id", btn.dataset.id!);
+            const id = btn.dataset.id!;
+            const row = (data as any[]).find((r) => r.id === id);
+            const started = row && row.status !== "assigned";
+            const message = started
+              ? "이 모의면접 기록을 삭제할까요?\n\n학생이 녹음한 답변과 받아쓰기 내용도 함께 삭제되며 복구할 수 없습니다."
+              : "이 모의면접 배정을 취소할까요?";
+            if (!confirm(message)) return;
+
+            const { data: items } = await supabase.from("mock_session_items").select("audio_path").eq("session_id", id);
+            const { error } = await supabase.from("mock_sessions").delete().eq("id", id);
+            if (error) {
+              alert("삭제에 실패했습니다: " + error.message);
+              return;
+            }
+            await removeRecordings(((items ?? []) as any[]).map((i) => i.audio_path));
             loadMockAssignments();
           })
         );
@@ -962,10 +1088,20 @@ import "../../styles/panel.css";
       $("addStudentBtn").addEventListener("click", openAddModal);
       $("studentModalCancel").addEventListener("click", closeStudentModal);
 
+      // 엑셀 등에서 붙여넣은 전각 쉼표(，)를 일반 쉼표로 바꾸고 각 칸 앞뒤 공백을 정리
+      function normalizeApplications(raw: string): { text: string | null; noCommaLines: string[] } {
+        const lines = raw
+          .replace(/[，、]/g, ",")
+          .split("\n")
+          .map((line) => line.split(",").map((part) => part.trim()).join(",").trim())
+          .filter(Boolean);
+        return { text: lines.length ? lines.join("\n") : null, noCommaLines: lines.filter((l) => !l.includes(",")) };
+      }
+
       $("studentModalSave").addEventListener("click", async () => {
         const name = $<HTMLInputElement>("fieldName").value.trim();
         const password = $<HTMLInputElement>("fieldPassword").value.trim();
-        const school = $<HTMLTextAreaElement>("fieldSchool").value.trim() || null;
+        const { text: school, noCommaLines } = normalizeApplications($<HTMLTextAreaElement>("fieldSchool").value);
         const errorEl = $("studentFormError");
 
         if (!name) {
@@ -976,20 +1112,34 @@ import "../../styles/panel.css";
           errorEl.textContent = "신규 등록 시 비밀번호는 필수입니다.";
           return;
         }
+        // 학생 로그인 화면은 숫자 4자리 PIN만 입력받으므로 그 외의 값은 로그인이 불가능함
+        if (password && !/^\d{4}$/.test(password)) {
+          errorEl.textContent = "비밀번호는 숫자 4자리여야 합니다.";
+          return;
+        }
+        if (noCommaLines.length > 0) {
+          const ok = confirm(
+            `쉼표(,) 없이 입력된 줄이 있습니다:\n${noCommaLines.join("\n")}\n\n이대로 저장하면 학교명만 저장되고 전형/학과/면접일은 비어 있게 됩니다.\n(작성형식: 학교명,전형,학과,면접일)\n\n그래도 저장할까요?`
+          );
+          if (!ok) return;
+        }
 
         const btn = $<HTMLButtonElement>("studentModalSave");
         btn.disabled = true;
 
         let error;
         if (editingId) {
-          ({ error } = await supabase.rpc("admin_update_student", {
-            p_id: editingId,
-            p_name: name,
-            p_school: school,
-            p_grade: null,
-          }));
-          if (!error && password) {
+          // 비밀번호가 거부되면 다른 정보도 저장되지 않도록 비밀번호를 먼저 처리
+          if (password) {
             ({ error } = await supabase.rpc("admin_set_student_password", { p_id: editingId, p_password: password }));
+          }
+          if (!error) {
+            ({ error } = await supabase.rpc("admin_update_student", {
+              p_id: editingId,
+              p_name: name,
+              p_school: school,
+              p_grade: null,
+            }));
           }
         } else {
           ({ error } = await supabase.rpc("admin_create_student", {
@@ -1021,19 +1171,31 @@ import "../../styles/panel.css";
       $("deleteCancel").addEventListener("click", () => $("deleteStudentModal").classList.remove("show"));
       $("deleteConfirm").addEventListener("click", async () => {
         if (!deletingId) return;
-        const { error } = await supabase.rpc("admin_delete_student", { p_id: deletingId });
+        const id = deletingId;
+        deletingId = null; // 연타해도 한 번만 실행
         $("deleteStudentModal").classList.remove("show");
+
+        // 학생 행이 지워지면 녹음 경로를 알 수 없게 되므로 삭제 전에 미리 모아둠
+        const [{ data: answers }, { data: sessions }] = await Promise.all([
+          supabase.from("custom_answers").select("audio_path").eq("student_id", id),
+          supabase.from("mock_sessions").select("mock_session_items(audio_path)").eq("student_id", id),
+        ]);
+        const audioPaths = [
+          ...((answers ?? []) as any[]).map((a) => a.audio_path),
+          ...((sessions ?? []) as any[]).flatMap((s) => (s.mock_session_items ?? []).map((i: any) => i.audio_path)),
+        ];
+
+        const { error } = await supabase.rpc("admin_delete_student", { p_id: id });
         if (error) {
           alert("삭제에 실패했습니다: " + error.message);
           return;
         }
+        await removeRecordings(audioPaths);
         loadStudents();
       });
 
       loadStudents();
       loadCommonQuestions();
-      loadIndividualQuestions();
-      loadMockAssignments();
     </script>
   </body>
 </html>

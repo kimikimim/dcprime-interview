@@ -323,7 +323,7 @@ import "../styles/panel.css";
           .join("");
 
         container.querySelectorAll<HTMLButtonElement>(".goto-bank-btn").forEach((btn) =>
-          btn.addEventListener("click", () => activateTab("mock"))
+          btn.addEventListener("click", () => activateTab("personal"))
         );
       }
 
@@ -332,6 +332,7 @@ import "../styles/panel.css";
       let myCustomAnswers: Record<string, string> = {};
       let myCustomAudioPaths: Record<string, string | null> = {};
       const activeCustomRecorders: Record<string, MediaRecorder> = {};
+      const startingCustomRecorders = new Set<string>();
 
       function recordingsUrl(path: string): string {
         return supabase.storage.from("recordings").getPublicUrl(path).data.publicUrl;
@@ -373,7 +374,7 @@ import "../styles/panel.css";
                   <button class="btn-primary-sm record-custom-btn" data-question-id="${q.id}" data-kind="${kind}">${audioPath ? "다시 녹음" : "음성 답변 녹음"}</button>
                   <span class="custom-record-status" data-question-id="${q.id}" style="font-size:12px;color:var(--gray-4)"></span>
                 </div>
-                ${audioPath ? `<audio controls src="${recordingsUrl(audioPath)}" style="width:100%;margin-top:10px;height:36px"></audio>` : ""}
+                ${audioPath ? `<audio controls preload="none" src="${recordingsUrl(audioPath)}" style="width:100%;margin-top:10px;height:36px"></audio>` : ""}
               </div>
             `;
           })
@@ -421,6 +422,13 @@ import "../styles/panel.css";
           existing.stop();
           return;
         }
+        // 마이크 권한 팝업이 떠 있는 동안 버튼을 또 누르면 녹음기가 2개 생겨 마이크가 계속 켜져 있게 됨
+        if (startingCustomRecorders.has(questionId)) return;
+        if (typeof MediaRecorder === "undefined") {
+          alert("이 브라우저는 녹음을 지원하지 않습니다. 최신 Chrome 또는 Safari에서 이용해주세요.");
+          return;
+        }
+        startingCustomRecorders.add(questionId);
 
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -437,6 +445,11 @@ import "../styles/panel.css";
             statusEl.textContent = "업로드 중...";
 
             const blob = new Blob(chunks, { type: mimeType });
+            if (blob.size === 0) {
+              btn.disabled = false;
+              statusEl.textContent = "녹음된 내용이 없습니다. 다시 시도해주세요.";
+              return;
+            }
             const ext = mimeType.includes("webm") ? "webm" : "m4a";
             // 재녹음 시 같은 URL이면 브라우저/CDN 캐시가 옛 녹음을 재생하므로 매번 새 경로 사용
             const path = `${kind}/${session.id}/${questionId}-${Date.now()}.${ext}`;
@@ -472,6 +485,7 @@ import "../styles/panel.css";
             if (!audioEl && card) {
               audioEl = document.createElement("audio");
               audioEl.controls = true;
+              audioEl.preload = "none";
               audioEl.style.cssText = "width:100%;margin-top:10px;height:36px";
               card.appendChild(audioEl);
             }
@@ -490,6 +504,8 @@ import "../styles/panel.css";
         } catch (err) {
           alert("마이크 권한이 필요합니다.");
           console.error(err);
+        } finally {
+          startingCustomRecorders.delete(questionId);
         }
       }
 
@@ -551,6 +567,9 @@ import "../styles/panel.css";
       let mockMediaRecorder: MediaRecorder | null = null;
       let mockAudioChunks: BlobPart[] = [];
       let mockIsRecording = false;
+      let mockRecordStarting = false;
+      let mockProcessing = false; // 녹음 종료 후 업로드/AI 응답을 기다리는 중
+      let mockStarting = false;
 
       function mockProgressLabel(type: MockItemType): string {
         if (type === "intro") return "자기소개";
@@ -579,6 +598,27 @@ import "../styles/panel.css";
         return [...common, ...individual];
       }
 
+      // 중간에 창을 닫거나 새로고침해서 "진행 중"으로 남은 세션 정리:
+      // 답변이 하나도 없으면 다시 응시할 수 있게 배정 상태로 되돌리고, 있으면 그 기록까지를 완료 처리
+      async function recoverAbandonedMockSessions() {
+        const { data, error } = await supabase
+          .from("mock_sessions")
+          .select("id, mock_session_items(id)")
+          .eq("student_id", session.id)
+          .eq("status", "in_progress");
+        if (error) {
+          console.error(error);
+          return;
+        }
+        for (const s of (data ?? []) as any[]) {
+          const hasItems = (s.mock_session_items ?? []).length > 0;
+          await supabase
+            .from("mock_sessions")
+            .update(hasItems ? { status: "completed", ended_at: new Date().toISOString() } : { status: "assigned" })
+            .eq("id", s.id);
+        }
+      }
+
       async function checkMockAssignment() {
         const { data, error } = await supabase
           .from("mock_sessions")
@@ -605,8 +645,16 @@ import "../styles/panel.css";
       }
 
       async function startMockSession() {
-        if (!mockSessionId) return;
+        if (!mockSessionId || mockStarting) return;
+        mockStarting = true;
+        try {
+          await beginMockSession();
+        } finally {
+          mockStarting = false;
+        }
+      }
 
+      async function beginMockSession() {
         mockPool = await loadMockQuestionPool();
         if (mockPool.length === 0) {
           alert("아직 등록된 질문이 없습니다. 관리자에게 문의해주세요.");
@@ -616,7 +664,7 @@ import "../styles/panel.css";
         const { error } = await supabase
           .from("mock_sessions")
           .update({ status: "in_progress", started_at: new Date().toISOString() })
-          .eq("id", mockSessionId);
+          .eq("id", mockSessionId!);
         if (error) {
           alert("모의면접 시작에 실패했습니다: " + error.message);
           return;
@@ -644,7 +692,8 @@ import "../styles/panel.css";
         if (remainMs <= 0) {
           $("mockTimer").textContent = "남은 시간 00:00";
           if (mockTimerInterval) window.clearInterval(mockTimerInterval);
-          if (mockCurrentItem && mockCurrentItem.type !== "closing" && !mockIsRecording) {
+          // 녹음 중이거나 업로드/AI 응답을 기다리는 중이면 건드리지 않음 (끝난 뒤 자연스럽게 마무리 질문으로 이동)
+          if (mockCurrentItem && mockCurrentItem.type !== "closing" && !mockIsRecording && !mockProcessing) {
             mockPairsRemaining = 0;
             showMockItem({ type: "closing", questionText: MOCK_CLOSING_PROMPT });
           }
@@ -672,6 +721,12 @@ import "../styles/panel.css";
       }
 
       async function startMockRecording() {
+        if (mockRecordStarting || mockProcessing) return;
+        if (typeof MediaRecorder === "undefined") {
+          alert("이 브라우저는 녹음을 지원하지 않습니다. 최신 Chrome 또는 Safari에서 이용해주세요.");
+          return;
+        }
+        mockRecordStarting = true;
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           const mimeType = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
@@ -691,6 +746,8 @@ import "../styles/panel.css";
         } catch (err) {
           alert("마이크 권한이 필요합니다.");
           console.error(err);
+        } finally {
+          mockRecordStarting = false;
         }
       }
 
@@ -712,12 +769,29 @@ import "../styles/panel.css";
 
       async function handleMockRecordingStop(mimeType: string) {
         const item = mockCurrentItem!;
+        // 처리 중에 타이머가 다음 질문으로 넘겨도 이 답변의 순서가 바뀌지 않도록 미리 고정
+        const seq = mockSequenceOrder;
+        const blob = new Blob(mockAudioChunks, { type: mimeType });
+        if (blob.size === 0) {
+          $("mockRecordStatus").textContent = "녹음된 내용이 없습니다. 다시 녹음해주세요.";
+          $<HTMLButtonElement>("mockRecordBtn").textContent = "답변 녹음 시작";
+          return;
+        }
+
+        mockProcessing = true;
+        try {
+          await processMockAnswer(item, seq, blob, mimeType);
+        } finally {
+          mockProcessing = false;
+        }
+      }
+
+      async function processMockAnswer(item: MockItem, seq: number, blob: Blob, mimeType: string) {
         $<HTMLButtonElement>("mockRecordBtn").disabled = true;
         $("mockRecordStatus").textContent = "처리 중...";
 
-        const blob = new Blob(mockAudioChunks, { type: mimeType });
         const ext = mimeType.includes("webm") ? "webm" : "m4a";
-        const path = `mock/${mockSessionId}/${mockSequenceOrder}-${item.type}.${ext}`;
+        const path = `mock/${mockSessionId}/${seq}-${item.type}.${ext}`;
 
         const { error: uploadError } = await supabase.storage.from("recordings").upload(path, blob, {
           contentType: mimeType,
@@ -738,7 +812,13 @@ import "../styles/panel.css";
                 Authorization: `Bearer ${supabaseAnonKey}`,
                 apikey: supabaseAnonKey,
               },
-              body: JSON.stringify({ questionText: item.questionText, audioBase64, mimeType, department: primaryDepartment() }),
+              // 아이폰 사파리는 audio/mp4로 녹음하는데 Gemini는 audio/m4a 표기만 공식 지원
+              body: JSON.stringify({
+                questionText: item.questionText,
+                audioBase64,
+                mimeType: mimeType === "audio/mp4" ? "audio/m4a" : mimeType,
+                department: primaryDepartment(),
+              }),
             });
             if (res.ok) {
               const json = await res.json();
@@ -753,15 +833,16 @@ import "../styles/panel.css";
           if (!followupQuestion) followupQuestion = pickRandom(MOCK_FALLBACK_FOLLOWUPS);
         }
 
-        await supabase.from("mock_session_items").insert({
+        const { error: insertError } = await supabase.from("mock_session_items").insert({
           session_id: mockSessionId,
-          sequence_order: mockSequenceOrder,
+          sequence_order: seq,
           item_type: item.type,
           question_text: item.questionText,
           source_question_id: item.sourceQuestionId ?? null,
           audio_path: uploadError ? null : path,
           transcript,
         });
+        if (insertError) console.error("모의면접 기록 저장 실패:", insertError);
 
         await advanceMockSession(item, followupQuestion);
       }
@@ -772,7 +853,8 @@ import "../styles/panel.css";
           return;
         }
         if (prevItem.type === "main") {
-          if (mockFollowupEnabled) {
+          // 제한 시간이 이미 지났으면 꼬리질문 없이 바로 다음(마무리)으로 진행
+          if (mockFollowupEnabled && Date.now() < mockDeadline) {
             showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
           } else {
             mockPairsRemaining -= 1;
@@ -871,7 +953,7 @@ import "../styles/panel.css";
               <div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--gray-6)">
                 <p style="font-size:12px;color:var(--blue);font-weight:700;margin-bottom:4px">${mockProgressLabel(it.item_type)}</p>
                 <p style="font-size:14px;color:var(--black);margin-bottom:8px;line-height:1.6">${escapeHtml(it.question_text)}</p>
-                ${it.audio_path ? `<audio controls src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
+                ${it.audio_path ? `<audio controls preload="none" src="${recordingsUrl(it.audio_path)}" style="width:100%;height:36px"></audio>` : `<p class="empty-text">녹음 없음</p>`}
                 ${it.transcript ? `<p style="font-size:13px;color:var(--gray-2);margin-top:8px;white-space:pre-wrap;line-height:1.6">받아쓰기: ${escapeHtml(it.transcript)}</p>` : ""}
               </div>
             `
@@ -977,8 +1059,10 @@ import "../styles/panel.css";
       loadGoals();
       loadCommonQuestions();
       loadPersonalQuestions();
-      checkMockAssignment();
-      loadMockHistory();
+      recoverAbandonedMockSessions().then(() => {
+        checkMockAssignment();
+        loadMockHistory();
+      });
     </script>
   </body>
 </html>

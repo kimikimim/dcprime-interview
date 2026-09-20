@@ -96,11 +96,34 @@ LANGUAGE sql SECURITY DEFINER AS $$
 $$;
 GRANT EXECUTE ON FUNCTION interview.admin_list_students() TO anon;
 
+-- 학생 비밀번호 규칙 검증 (로그인 화면이 숫자 4자리 PIN만 받고, PIN 하나로 관리자/학생을 판별하므로
+-- 4자리 숫자가 아니거나 / 관리자 PIN과 같거나 / 다른 학생과 겹치면 로그인이 꼬임)
+CREATE OR REPLACE FUNCTION interview.assert_valid_student_password(p_password text, p_exclude_id uuid DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF p_password IS NULL OR p_password !~ '^[0-9]{4}$' THEN
+    RAISE EXCEPTION '비밀번호는 숫자 4자리여야 합니다.';
+  END IF;
+  IF EXISTS (SELECT 1 FROM interview.config WHERE key = 'admin_password' AND value = p_password) THEN
+    RAISE EXCEPTION '관리자 비밀번호와 같은 번호는 사용할 수 없습니다.';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM interview.students s
+    WHERE (p_exclude_id IS NULL OR s.id <> p_exclude_id)
+      AND s.password_hash = extensions.crypt(p_password, s.password_hash)
+  ) THEN
+    RAISE EXCEPTION '이미 다른 학생이 사용 중인 비밀번호입니다.';
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION interview.admin_create_student(p_name text, p_school text, p_grade text, p_password text)
 RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE v_id uuid;
 BEGIN
+  PERFORM interview.assert_valid_student_password(p_password);
   INSERT INTO interview.students (name, school, grade, password_hash)
   VALUES (p_name, p_school, p_grade, extensions.crypt(p_password, extensions.gen_salt('bf')))
   RETURNING id INTO v_id;
@@ -124,6 +147,7 @@ CREATE OR REPLACE FUNCTION interview.admin_set_student_password(p_id uuid, p_pas
 RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
+  PERFORM interview.assert_valid_student_password(p_password, p_id);
   UPDATE interview.students
   SET password_hash = extensions.crypt(p_password, extensions.gen_salt('bf'))
   WHERE id = p_id;
@@ -439,5 +463,8 @@ CREATE POLICY "anon all recordings" ON storage.objects
 GRANT ALL ON ALL TABLES IN SCHEMA interview TO anon, authenticated;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA interview TO anon, authenticated;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA interview TO anon, authenticated;
+
+-- 내부 검증용 함수는 브라우저에서 직접 호출하지 못하게 막음 (admin_create/set 함수 안에서만 사용)
+REVOKE EXECUTE ON FUNCTION interview.assert_valid_student_password(text, uuid) FROM PUBLIC, anon, authenticated;
 
 NOTIFY pgrst, 'reload schema';
