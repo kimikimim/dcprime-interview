@@ -403,6 +403,9 @@ CREATE POLICY "anon delete interview_mock_sessions" ON interview.mock_sessions
 -- 난이도 조절: 배정 시 꼬리질문(AI 실시간 생성) 포함 여부 선택 가능
 ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS followup_enabled boolean NOT NULL DEFAULT true;
 
+-- 본질문을 관리자가 직접 골라서 배정할 수 있도록 함 (null이면 기존처럼 응시 시점에 랜덤 선택)
+ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS selected_question_ids uuid[];
+
 DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon update interview_mock_sessions" ON interview.mock_sessions;

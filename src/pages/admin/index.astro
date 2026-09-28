@@ -141,6 +141,23 @@ import "../../styles/panel.css";
               <input type="checkbox" id="mockFollowupToggle" checked />
               꼬리질문 포함 (AI가 답변을 듣고 실시간으로 생성)
             </label>
+
+            <p class="form-label" style="margin-top:14px">본질문 선택 방식</p>
+            <div style="display:flex;gap:16px;margin-bottom:10px">
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--black);cursor:pointer">
+                <input type="radio" name="mockQuestionMode" value="random" checked /> 랜덤 (1~2개 자동)
+              </label>
+              <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--black);cursor:pointer">
+                <input type="radio" name="mockQuestionMode" value="manual" /> 직접 선택
+              </label>
+            </div>
+            <div id="mockManualPicker" class="hidden" style="margin-bottom:10px">
+              <p class="form-hint" style="margin-bottom:8px">학생을 한 명만 선택했을 때 사용할 수 있습니다. 체크한 순서대로 본질문이 출제됩니다.</p>
+              <div id="mockQuestionPickList" style="display:flex;flex-direction:column;max-height:260px;overflow-y:auto;border:1px solid var(--gray-6);border-radius:8px;padding:8px 10px">
+                <p class="empty-text">학생을 선택해주세요.</p>
+              </div>
+            </div>
+
             <button class="btn-primary-sm" id="mockAssignSubmit" style="margin-top:12px">모의면접 만들기</button>
           </div>
           <div id="mockAssignList" style="display:flex;flex-direction:column;gap:10px">
@@ -971,9 +988,85 @@ import "../../styles/panel.css";
             if (mockSelectedStudentIds.has(id)) mockSelectedStudentIds.delete(id);
             else mockSelectedStudentIds.add(id);
             btn.classList.toggle("selected");
+            renderMockQuestionPicker();
           })
         );
       }
+
+      // ── 문제출제: 모의면접 본질문 직접 선택 ──
+      let mockManualSelectedOrder: string[] = [];
+      let mockManualPool: { id: string; question_text: string }[] = [];
+
+      function currentMockQuestionMode(): "random" | "manual" {
+        const checked = document.querySelector<HTMLInputElement>('input[name="mockQuestionMode"]:checked');
+        return checked?.value === "manual" ? "manual" : "random";
+      }
+
+      async function loadQuestionPoolForStudent(studentId: string): Promise<{ id: string; question_text: string }[]> {
+        const [{ data: common }, { data: targets }] = await Promise.all([
+          supabase.from("custom_questions").select("id, question_text").eq("visibility", "common").order("created_at", { ascending: true }),
+          supabase
+            .from("custom_question_targets")
+            .select("custom_questions(id, question_text, created_at)")
+            .eq("student_id", studentId),
+        ]);
+        const individual = ((targets ?? []) as any[])
+          .map((t) => t.custom_questions)
+          .filter(Boolean)
+          .sort((a: any, b: any) => (a.created_at < b.created_at ? -1 : 1));
+        return [...((common ?? []) as any[]), ...individual];
+      }
+
+      async function renderMockQuestionPicker() {
+        const wrap = $("mockManualPicker");
+        const list = $("mockQuestionPickList");
+        const manual = currentMockQuestionMode() === "manual";
+        wrap.classList.toggle("hidden", !manual);
+        if (!manual) return;
+
+        if (mockSelectedStudentIds.size !== 1) {
+          mockManualPool = [];
+          list.innerHTML = `<p class="empty-text">학생을 한 명만 선택해주세요.</p>`;
+          return;
+        }
+
+        const studentId = [...mockSelectedStudentIds][0];
+        mockManualPool = await loadQuestionPoolForStudent(studentId);
+        mockManualSelectedOrder = mockManualSelectedOrder.filter((id) => mockManualPool.some((q) => q.id === id));
+
+        if (mockManualPool.length === 0) {
+          list.innerHTML = `<p class="empty-text">등록된 질문이 없습니다.</p>`;
+          return;
+        }
+
+        list.innerHTML = mockManualPool
+          .map((q) => {
+            const order = mockManualSelectedOrder.indexOf(q.id);
+            return `
+              <label style="display:flex;align-items:flex-start;gap:8px;font-size:13px;line-height:1.5;cursor:pointer;padding:6px 2px;border-bottom:1px solid var(--gray-7)">
+                <input type="checkbox" class="mock-question-checkbox" data-id="${q.id}" ${order >= 0 ? "checked" : ""} />
+                <span>${order >= 0 ? `<b style="color:var(--blue)">[${order + 1}]</b> ` : ""}${escapeHtml(q.question_text)}</span>
+              </label>
+            `;
+          })
+          .join("");
+
+        list.querySelectorAll<HTMLInputElement>(".mock-question-checkbox").forEach((cb) =>
+          cb.addEventListener("change", () => {
+            const id = cb.dataset.id!;
+            if (cb.checked) mockManualSelectedOrder.push(id);
+            else mockManualSelectedOrder = mockManualSelectedOrder.filter((x) => x !== id);
+            renderMockQuestionPicker();
+          })
+        );
+      }
+
+      document.querySelectorAll<HTMLInputElement>('input[name="mockQuestionMode"]').forEach((r) =>
+        r.addEventListener("change", () => {
+          if (r.value !== "manual") mockManualSelectedOrder = [];
+          renderMockQuestionPicker();
+        })
+      );
 
       function mockStatusLabel(status: string): string {
         if (status === "assigned") return "배정됨 (대기 중)";
@@ -984,7 +1077,7 @@ import "../../styles/panel.css";
       async function loadMockAssignments() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, student_id, status, started_at, followup_enabled")
+          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids")
           .order("started_at", { ascending: false });
         const list = $("mockAssignList");
         if (error) {
@@ -999,11 +1092,13 @@ import "../../styles/panel.css";
         list.innerHTML = data
           .map((row: any) => {
             const name = studentsCache.find((s) => s.id === row.student_id)?.name ?? "알 수 없음";
+            const qCount = row.selected_question_ids?.length ?? 0;
+            const questionMode = qCount > 0 ? `본질문 직접선택 ${qCount}개` : "본질문 랜덤";
             return `
               <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
                   <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)}</p>
-                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
+                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
                 </div>
                 <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>
               </div>
@@ -1037,12 +1132,27 @@ import "../../styles/panel.css";
           alert("대상 학생을 한 명 이상 선택해주세요.");
           return;
         }
+
+        let selectedQuestionIds: string[] | null = null;
+        if (currentMockQuestionMode() === "manual") {
+          if (mockSelectedStudentIds.size !== 1) {
+            alert("직접 선택 모드는 학생을 한 명만 선택했을 때 사용할 수 있습니다.");
+            return;
+          }
+          if (mockManualSelectedOrder.length === 0) {
+            alert("출제할 본질문을 한 개 이상 선택해주세요.");
+            return;
+          }
+          selectedQuestionIds = [...mockManualSelectedOrder];
+        }
+
         const followupEnabled = $<HTMLInputElement>("mockFollowupToggle").checked;
         const rows = [...mockSelectedStudentIds].map((student_id) => ({
           student_id,
           planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
           status: "assigned",
           followup_enabled: followupEnabled,
+          selected_question_ids: selectedQuestionIds,
         }));
         const { error } = await supabase.from("mock_sessions").insert(rows);
         if (error) {
@@ -1050,7 +1160,9 @@ import "../../styles/panel.css";
           return;
         }
         mockSelectedStudentIds.clear();
+        mockManualSelectedOrder = [];
         renderMockStudentPicker();
+        renderMockQuestionPicker();
         loadMockAssignments();
       });
 
