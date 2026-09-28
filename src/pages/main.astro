@@ -515,7 +515,7 @@ import "../styles/panel.css";
           .from("custom_questions")
           .select("*")
           .eq("visibility", "common")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: true });
         if (error) {
           $("commonQuestionList").innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
           console.error(error);
@@ -538,7 +538,7 @@ import "../styles/panel.css";
         const questions = (data ?? [])
           .map((row: any) => row.custom_questions)
           .filter(Boolean)
-          .sort((a: any, b: any) => (a.created_at < b.created_at ? 1 : -1));
+          .sort((a: any, b: any) => (a.created_at < b.created_at ? -1 : 1));
         renderCustomQuestionList("personalQuestionList", questions, "등록된 개별 질문이 없습니다.", "personal");
       }
 

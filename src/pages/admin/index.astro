@@ -591,7 +591,7 @@ import "../../styles/panel.css";
           .from("custom_questions")
           .select("*")
           .eq("visibility", "common")
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: true });
         const list = $("commonQuestionList");
         if (error) {
           list.innerHTML = `<p class="empty-text">불러오기에 실패했습니다.</p>`;
@@ -857,7 +857,7 @@ import "../../styles/panel.css";
               .from("custom_questions")
               .select("*, custom_question_targets(student_id)")
               .eq("visibility", "individual")
-              .order("created_at", { ascending: false })
+              .order("created_at", { ascending: true })
               .order("id")
               .range(from, to)
           );
