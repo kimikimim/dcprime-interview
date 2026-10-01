@@ -525,8 +525,13 @@ import "../../styles/panel.css";
           .filter((s) => s.status === "completed")
           .sort((a, b) => (a.started_at < b.started_at ? -1 : 1))
           .forEach((s, i) => roundById.set(s.id, i + 1));
+        const assignedTag = (s: any) => (s.assigned_by === "self" ? "자율" : "배정");
         const statusText = (s: any) =>
-          s.status === "completed" ? `모의면접 ${roundById.get(s.id)}회차 · 완료` : s.status === "assigned" ? "배정됨 (아직 시작 전)" : "진행 중";
+          s.status === "completed"
+            ? `모의면접 ${roundById.get(s.id)}회차 (${assignedTag(s)}) · 완료`
+            : s.status === "assigned"
+            ? `배정됨 (아직 시작 전) · ${assignedTag(s)}`
+            : `진행 중 · ${assignedTag(s)}`;
         if (sessions.length === 0) {
           html += `<p class="empty-text">진행한 모의면접이 없습니다.</p>`;
         } else {
@@ -1077,7 +1082,7 @@ import "../../styles/panel.css";
       async function loadMockAssignments() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids")
+          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids, assigned_by")
           .order("started_at", { ascending: false });
         const list = $("mockAssignList");
         if (error) {
@@ -1094,10 +1099,11 @@ import "../../styles/panel.css";
             const name = studentsCache.find((s) => s.id === row.student_id)?.name ?? "알 수 없음";
             const qCount = row.selected_question_ids?.length ?? 0;
             const questionMode = qCount > 0 ? `본질문 직접선택 ${qCount}개` : "본질문 랜덤";
+            const tag = row.assigned_by === "self" ? "자율" : "배정";
             return `
               <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
-                  <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)}</p>
+                  <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)} <span class="tag-pill" style="margin-left:4px">${tag}</span></p>
                   <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
                 </div>
                 <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>

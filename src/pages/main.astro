@@ -639,18 +639,43 @@ import "../styles/panel.css";
           mockFollowupEnabled = data.followup_enabled ?? true;
           mockSelectedQuestionIds = data.selected_question_ids ?? null;
           $("mockAssignedNote").textContent = "선생님이 배정한 모의면접이 있습니다.";
-          $("mockStartBtn").classList.remove("hidden");
+          $<HTMLButtonElement>("mockStartBtn").textContent = "모의면접 시작";
         } else {
           mockSessionId = null;
-          $("mockAssignedNote").textContent = "아직 배정된 모의면접이 없습니다. 선생님께 문의해주세요.";
-          $("mockStartBtn").classList.add("hidden");
+          mockFollowupEnabled = true;
+          mockSelectedQuestionIds = null;
+          $("mockAssignedNote").textContent = "배정된 모의면접은 없지만, 자유롭게 연습할 수 있습니다.";
+          $<HTMLButtonElement>("mockStartBtn").textContent = "자율 연습 시작";
         }
+        $("mockStartBtn").classList.remove("hidden");
       }
 
+      // 배정이 없으면 그 자리에서 자율 연습용 세션을 새로 만들고, 있으면 그 배정을 그대로 시작
       async function startMockSession() {
-        if (!mockSessionId || mockStarting) return;
+        if (mockStarting) return;
         mockStarting = true;
         try {
+          if (!mockSessionId) {
+            const { data, error } = await supabase
+              .from("mock_sessions")
+              .insert({
+                student_id: session.id,
+                planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
+                status: "assigned",
+                followup_enabled: true,
+                assigned_by: "self",
+              })
+              .select()
+              .single();
+            if (error || !data) {
+              alert("모의면접 생성에 실패했습니다: " + error?.message);
+              return;
+            }
+            mockSessionId = data.id;
+            mockPlannedDuration = data.planned_duration_seconds;
+            mockFollowupEnabled = true;
+            mockSelectedQuestionIds = null;
+          }
           await beginMockSession();
         } finally {
           mockStarting = false;
@@ -912,7 +937,7 @@ import "../styles/panel.css";
       async function loadMockHistory() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, started_at")
+          .select("id, started_at, assigned_by")
           .eq("student_id", session.id)
           .eq("status", "completed")
           .order("started_at", { ascending: true });
@@ -931,16 +956,19 @@ import "../styles/panel.css";
         }
 
         list.innerHTML = sessions
-          .map((s: any, i: number) => `<button type="button" class="btn-primary-sm mock-history-btn" data-id="${s.id}" data-round="${i + 1}">모의면접 ${i + 1}회차</button>`)
+          .map((s: any, i: number) => {
+            const tag = s.assigned_by === "self" ? "자율" : "배정";
+            return `<button type="button" class="btn-primary-sm mock-history-btn" data-id="${s.id}" data-round="${i + 1}" data-tag="${tag}">모의면접 ${i + 1}회차 (${tag})</button>`;
+          })
           .join("");
 
         list.querySelectorAll<HTMLButtonElement>(".mock-history-btn").forEach((btn) =>
-          btn.addEventListener("click", () => openMockHistoryDetail(btn.dataset.id!, Number(btn.dataset.round)))
+          btn.addEventListener("click", () => openMockHistoryDetail(btn.dataset.id!, Number(btn.dataset.round), btn.dataset.tag!))
         );
       }
 
-      async function openMockHistoryDetail(sessionId: string, round: number) {
-        $("mockHistoryTitle").textContent = `모의면접 ${round}회차`;
+      async function openMockHistoryDetail(sessionId: string, round: number, tag: string) {
+        $("mockHistoryTitle").textContent = `모의면접 ${round}회차 (${tag})`;
         $("mockHistoryDetail").innerHTML = `<p class="empty-text">불러오는 중...</p>`;
         $("mockHistoryModal").classList.add("show");
 

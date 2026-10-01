@@ -406,6 +406,9 @@ ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS followup_enabled bo
 -- 본질문을 관리자가 직접 골라서 배정할 수 있도록 함 (null이면 기존처럼 응시 시점에 랜덤 선택)
 ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS selected_question_ids uuid[];
 
+-- 학생이 직접 시작한 자율 연습인지, 관리자가 배정한 것인지 구분해서 기록에 표시
+ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS assigned_by text NOT NULL DEFAULT 'admin' CHECK (assigned_by IN ('admin', 'self'));
+
 DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon update interview_mock_sessions" ON interview.mock_sessions;
