@@ -264,6 +264,12 @@ import "../../styles/panel.css";
         return rows;
       }
 
+      // 한 번에 여러 행을 넣으면 생성 시각이 전부 같아서 목록 순서가 섞이므로, 입력한 순서대로 1ms씩 차이를 둠
+      function withOrderedTimestamps<T extends object>(rows: T[]): (T & { created_at: string })[] {
+        const base = Date.now();
+        return rows.map((row, i) => ({ ...row, created_at: new Date(base + i).toISOString() }));
+      }
+
       // 삭제된 질문/학생/세션에 딸린 녹음 파일이 저장소에 계속 남지 않도록 정리 (실패해도 화면 동작에는 영향 없음)
       async function removeRecordings(paths: (string | null | undefined)[]) {
         const list = paths.filter((p): p is string => !!p);
@@ -829,7 +835,7 @@ import "../../styles/panel.css";
         const selected = indexes.map((i) => aiGenQuestions[i]);
         const { data, error } = await supabase
           .from("custom_questions")
-          .insert(selected.map((q) => ({ question_text: q.question, visibility: "individual" })))
+          .insert(withOrderedTimestamps(selected.map((q) => ({ question_text: q.question, visibility: "individual" }))))
           .select();
 
         if (error || !data) {
@@ -944,7 +950,7 @@ import "../../styles/panel.css";
 
         const { data, error } = await supabase
           .from("custom_questions")
-          .insert(questions.map((question_text) => ({ question_text, visibility: "individual" })))
+          .insert(withOrderedTimestamps(questions.map((question_text) => ({ question_text, visibility: "individual" }))))
           .select();
 
         if (error || !data) {
