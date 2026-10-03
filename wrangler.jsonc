@@ -3,6 +3,9 @@
   "name": "dcprime-interview",
   "main": "worker/index.ts",
   "compatibility_date": "2026-09-16",
+  // Gemini API는 일부 지역(한국 근처 Cloudflare 데이터센터 포함)에서 오는 요청을 거부하므로
+  // Worker를 미국 리전에서 실행시켜 Gemini 호출이 지원 지역에서 나가게 한다
+  "placement": { "region": "aws:us-east-1" },
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application",
