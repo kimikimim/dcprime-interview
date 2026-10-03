@@ -173,7 +173,7 @@ import "../styles/panel.css";
     </div>
 
     <script>
-      import { supabase, supabaseUrl, supabaseAnonKey } from "../lib/supabase";
+      import { supabase } from "../lib/supabase";
 
       type StudentSession = { id: string; name: string; school: string | null };
 
@@ -844,12 +844,10 @@ import "../styles/panel.css";
         if (item.type === "main" && mockFollowupEnabled) {
           try {
             const audioBase64 = await blobToBase64(blob);
-            const res = await fetch(`${supabaseUrl}/functions/v1/generate-followup`, {
+            const res = await fetch("/api/generate-followup", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                Authorization: `Bearer ${supabaseAnonKey}`,
-                apikey: supabaseAnonKey,
               },
               // 아이폰 사파리는 audio/mp4로 녹음하는데 Gemini는 audio/m4a 표기만 공식 지원
               body: JSON.stringify({

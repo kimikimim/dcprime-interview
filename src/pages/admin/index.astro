@@ -266,7 +266,7 @@ import "../../styles/panel.css";
     </div>
 
     <script>
-      import { supabase, supabaseUrl, supabaseAnonKey } from "../../lib/supabase";
+      import { supabase } from "../../lib/supabase";
 
       const SESSION_KEY = "admin_authed";
       if (sessionStorage.getItem(SESSION_KEY) !== "ok") {
@@ -840,12 +840,10 @@ import "../../styles/panel.css";
 
         try {
           const pdfBase64 = await fileToBase64(file);
-          const res = await fetch(`${supabaseUrl}/functions/v1/generate-questions-from-record`, {
+          const res = await fetch("/api/generate-questions-from-record", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${supabaseAnonKey}`,
-              apikey: supabaseAnonKey,
             },
             body: JSON.stringify({ pdfBase64, count }),
           });

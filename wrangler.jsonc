@@ -1,9 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "dcprime-interview",
+  "main": "worker/index.ts",
   "compatibility_date": "2026-09-16",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // /api/* 만 Worker가 처리하고 나머지는 정적 파일로 바로 응답
+    "run_worker_first": ["/api/*"]
   }
 }
