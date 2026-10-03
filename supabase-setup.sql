@@ -35,14 +35,97 @@ ON CONFLICT (key) DO NOTHING;
 DELETE FROM interview.config WHERE key = 'site_password';
 DROP FUNCTION IF EXISTS interview.verify_site_password(text);
 
+-- 관리자 계정 (admin = 총괄, admin1~3 = 일반). PIN 하나로 로그인하므로 PIN은 관리자+학생 전체에서 유일해야 함.
+-- admin1~3은 PIN 미설정(NULL) 상태로 생성 → admin이 "계정 관리" 탭에서 PIN을 지정해야 로그인 가능
+CREATE TABLE IF NOT EXISTS interview.admins (
+  id       text PRIMARY KEY,
+  name     text NOT NULL,
+  role     text NOT NULL DEFAULT 'staff' CHECK (role IN ('super','staff')),
+  pin_hash text
+);
+ALTER TABLE interview.admins ENABLE ROW LEVEL SECURITY;
+-- 정책 없음 = anon 직접 조회 불가, 아래 RPC로만 접근
+
+INSERT INTO interview.admins (id, name, role, pin_hash)
+SELECT 'admin', 'admin', 'super',
+       extensions.crypt(COALESCE((SELECT value FROM interview.config WHERE key = 'admin_password'), '1250'), extensions.gen_salt('bf'))
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO interview.admins (id, name, role) VALUES
+  ('admin1', 'admin1', 'staff'),
+  ('admin2', 'admin2', 'staff'),
+  ('admin3', 'admin3', 'staff')
+ON CONFLICT (id) DO NOTHING;
+
+-- 로그인: 맞으면 (id, name, role) 반환, 아니면 0행
+CREATE OR REPLACE FUNCTION interview.verify_admin_login(p_pw text)
+RETURNS TABLE (id text, name text, role text)
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  RETURN QUERY
+  SELECT a.id, a.name, a.role FROM interview.admins a
+  WHERE a.pin_hash IS NOT NULL AND a.pin_hash = extensions.crypt(p_pw, a.pin_hash)
+  LIMIT 1;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.verify_admin_login(text) TO anon;
+
+-- 예전 로그인 함수 호환 유지
 CREATE OR REPLACE FUNCTION interview.verify_admin_password(p_pw text)
 RETURNS boolean
 LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-  RETURN EXISTS (SELECT 1 FROM interview.config WHERE key = 'admin_password' AND value = p_pw);
+  RETURN EXISTS (SELECT 1 FROM interview.admins a WHERE a.pin_hash IS NOT NULL AND a.pin_hash = extensions.crypt(p_pw, a.pin_hash));
 END;
 $$;
 GRANT EXECUTE ON FUNCTION interview.verify_admin_password(text) TO anon;
+
+-- 계정 목록 (PIN 해시는 노출하지 않고 설정 여부만)
+CREATE OR REPLACE FUNCTION interview.list_admin_accounts()
+RETURNS TABLE (id text, name text, role text, has_pin boolean)
+LANGUAGE sql SECURITY DEFINER AS $$
+  SELECT a.id, a.name, a.role, a.pin_hash IS NOT NULL FROM interview.admins a ORDER BY a.id;
+$$;
+GRANT EXECUTE ON FUNCTION interview.list_admin_accounts() TO anon;
+
+-- 계정 이름/PIN 수정. 호출자가 총괄(super) 관리자의 현재 PIN(p_auth_pin)을 알고 있어야 함. p_pin이 비어 있으면 PIN 유지.
+CREATE OR REPLACE FUNCTION interview.update_admin_account(p_auth_pin text, p_id text, p_name text, p_pin text DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM interview.admins a
+    WHERE a.role = 'super' AND a.pin_hash IS NOT NULL AND a.pin_hash = extensions.crypt(p_auth_pin, a.pin_hash)
+  ) THEN
+    RAISE EXCEPTION '총괄 관리자 비밀번호가 올바르지 않습니다.';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM interview.admins WHERE id = p_id) THEN
+    RAISE EXCEPTION '존재하지 않는 계정입니다.';
+  END IF;
+  IF p_name IS NULL OR btrim(p_name) = '' THEN
+    RAISE EXCEPTION '이름을 입력하세요.';
+  END IF;
+  UPDATE interview.admins SET name = btrim(p_name) WHERE id = p_id;
+
+  IF p_pin IS NOT NULL AND p_pin <> '' THEN
+    IF p_pin !~ '^[0-9]{4}$' THEN
+      RAISE EXCEPTION '비밀번호는 숫자 4자리여야 합니다.';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM interview.admins a
+      WHERE a.id <> p_id AND a.pin_hash IS NOT NULL AND a.pin_hash = extensions.crypt(p_pin, a.pin_hash)
+    ) THEN
+      RAISE EXCEPTION '이미 다른 관리자가 사용 중인 비밀번호입니다.';
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM interview.students s WHERE s.password_hash = extensions.crypt(p_pin, s.password_hash)
+    ) THEN
+      RAISE EXCEPTION '이미 학생이 사용 중인 비밀번호입니다.';
+    END IF;
+    UPDATE interview.admins SET pin_hash = extensions.crypt(p_pin, extensions.gen_salt('bf')) WHERE id = p_id;
+  END IF;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION interview.update_admin_account(text, text, text, text) TO anon;
 
 -- ────────────────────────────────────────────
 -- 2. 학생 테이블
@@ -105,7 +188,7 @@ BEGIN
   IF p_password IS NULL OR p_password !~ '^[0-9]{4}$' THEN
     RAISE EXCEPTION '비밀번호는 숫자 4자리여야 합니다.';
   END IF;
-  IF EXISTS (SELECT 1 FROM interview.config WHERE key = 'admin_password' AND value = p_password) THEN
+  IF EXISTS (SELECT 1 FROM interview.admins a WHERE a.pin_hash IS NOT NULL AND a.pin_hash = extensions.crypt(p_password, a.pin_hash)) THEN
     RAISE EXCEPTION '관리자 비밀번호와 같은 번호는 사용할 수 없습니다.';
   END IF;
   IF EXISTS (

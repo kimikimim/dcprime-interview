@@ -150,9 +150,18 @@ import "../styles/global.css";
         loadingText.textContent = "확인 중...";
         loadingOverlay.classList.remove("hidden");
 
-        const { data: isAdmin, error: adminError } = await supabase.rpc("verify_admin_password", { p_pw: pin });
-        if (!adminError && isAdmin === true) {
+        let adminAccount: { id: string; name: string; role: string } | null = null;
+        const { data: adminRows, error: adminError } = await supabase.rpc("verify_admin_login", { p_pw: pin });
+        if (!adminError && adminRows && adminRows.length > 0) {
+          adminAccount = adminRows[0];
+        } else if (adminError) {
+          // supabase-setup.sql 재실행 전(verify_admin_login 없음)에도 기존 admin이 로그인되도록 폴백
+          const { data: legacyOk } = await supabase.rpc("verify_admin_password", { p_pw: pin });
+          if (legacyOk === true) adminAccount = { id: "admin", name: "admin", role: "staff" };
+        }
+        if (adminAccount) {
           sessionStorage.setItem("admin_authed", "ok");
+          sessionStorage.setItem("admin_account", JSON.stringify(adminAccount));
           loadingText.textContent = "관리자님, 환영해요!";
           setTimeout(() => {
             window.location.href = "/admin";

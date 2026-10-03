@@ -49,6 +49,10 @@ import "../../styles/panel.css";
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="19" cy="8" r="3" stroke="currentColor" stroke-width="2"/><path d="M19 5v6M16 8h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           학생 관리
         </button>
+        <button class="tab-btn hidden" data-tab="accounts" id="accountsTabBtn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3" y="11" width="18" height="10" rx="2" stroke="currentColor" stroke-width="2"/><path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          계정 관리
+        </button>
         <button class="tab-bar-logout" id="hamburgerLogoutBtn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
           로그아웃
@@ -183,6 +187,44 @@ import "../../styles/panel.css";
       </div>
     </div>
 
+    <!-- 계정 관리 (총괄 admin 전용) -->
+    <div class="tab-panel" id="tabAccounts">
+      <div class="admin-panel">
+        <div class="panel-toolbar">
+          <h2 class="section-subtitle" style="margin:0">관리자 계정</h2>
+        </div>
+        <p class="form-hint" style="margin:0 0 12px">비밀번호는 숫자 4자리이며, 다른 관리자·학생과 겹칠 수 없습니다. 비밀번호가 설정되지 않은 계정은 로그인할 수 없습니다.</p>
+        <div class="student-mgmt-list" id="accountsList">
+          <p class="empty-text">계정을 불러오는 중...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 계정 수정 모달 -->
+    <div class="modal-overlay" id="accountModal">
+      <div class="modal modal--form">
+        <h3 class="modal-title" id="accountModalTitle">계정 수정</h3>
+        <div class="form-group">
+          <label class="form-label">이름 <span class="form-required">*</span></label>
+          <input class="form-input" id="accountName" type="text" maxlength="20" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">새 비밀번호</label>
+          <input class="form-input" id="accountPin" type="text" inputmode="numeric" placeholder="숫자 4자리" maxlength="4" autocomplete="off" />
+          <p class="form-hint" id="accountPinHint">비워두면 기존 비밀번호 유지</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">내 비밀번호 확인 <span class="form-required">*</span></label>
+          <input class="form-input" id="accountAuthPin" type="password" inputmode="numeric" placeholder="총괄 admin 비밀번호" maxlength="4" autocomplete="off" />
+        </div>
+        <p class="form-error" id="accountFormError"></p>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn--cancel" id="accountModalCancel">취소</button>
+          <button class="modal-btn modal-btn--save" id="accountModalSave">저장</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 학생 추가/수정 모달 -->
     <div class="modal-overlay" id="studentModal">
       <div class="modal modal--form">
@@ -284,12 +326,23 @@ import "../../styles/panel.css";
         window.location.href = "/";
       });
 
+      // 총괄(super) 관리자만 계정 관리 탭 노출
+      let adminAccount: { id: string; name: string; role: string } | null = null;
+      try {
+        adminAccount = JSON.parse(sessionStorage.getItem("admin_account") ?? "null");
+      } catch {
+        adminAccount = null;
+      }
+      const isSuperAdmin = adminAccount?.role === "super";
+      if (isSuperAdmin) $("accountsTabBtn").classList.remove("hidden");
+
       // ── 탭 전환 + 햄버거 메뉴 ──
       const tabBtns = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
       const panels: Record<string, HTMLElement> = {
         study: $("tabStudy"),
         students: $("tabStudents"),
         authoring: $("tabAuthoring"),
+        accounts: $("tabAccounts"),
       };
       const tabBar = document.querySelector<HTMLElement>(".tab-bar")!;
       const menuBackdrop = document.createElement("div");
@@ -303,6 +356,7 @@ import "../../styles/panel.css";
           const t = b.dataset.tab!;
           tabBtns.forEach((x) => x.classList.toggle("active", x.dataset.tab === t));
           Object.entries(panels).forEach(([k, p]) => p.classList.toggle("active", k === t));
+          if (t === "accounts") loadAccounts();
           closeMenu();
         })
       );
@@ -1283,6 +1337,92 @@ import "../../styles/panel.css";
 
         closeStudentModal();
         loadStudents();
+      });
+
+      // ── 계정 관리 (총괄 admin 전용) ──
+      type AdminAccount = { id: string; name: string; role: string; has_pin: boolean };
+      let accountsCache: AdminAccount[] = [];
+      let editingAccountId: string | null = null;
+
+      async function loadAccounts() {
+        if (!isSuperAdmin) return;
+        const list = $("accountsList");
+        const { data, error } = await supabase.rpc("list_admin_accounts");
+        if (error) {
+          list.innerHTML = `<p class="empty-text">계정을 불러오지 못했습니다: ${escapeHtml(error.message)}</p>`;
+          return;
+        }
+        accountsCache = (data ?? []) as AdminAccount[];
+        list.innerHTML = accountsCache
+          .map(
+            (a) => `
+              <div class="student-mgmt-card">
+                <div class="student-mgmt-avatar">${escapeHtml(a.name.slice(0, 1).toUpperCase())}</div>
+                <div class="student-mgmt-info">
+                  <div class="student-mgmt-name">${escapeHtml(a.name)}</div>
+                  <div class="student-mgmt-meta">${escapeHtml(a.id)} · ${a.role === "super" ? "총괄 (계정 관리 가능)" : "일반 관리자"} · ${a.has_pin ? "비밀번호 설정됨" : "비밀번호 미설정 (로그인 불가)"}</div>
+                </div>
+                <div class="student-mgmt-actions">
+                  <button class="btn-edit" data-id="${escapeHtml(a.id)}">수정</button>
+                </div>
+              </div>`
+          )
+          .join("");
+        list.querySelectorAll<HTMLButtonElement>(".btn-edit").forEach((btn) =>
+          btn.addEventListener("click", () => openAccountModal(btn.dataset.id!))
+        );
+      }
+
+      function openAccountModal(id: string) {
+        const a = accountsCache.find((x) => x.id === id);
+        if (!a) return;
+        editingAccountId = id;
+        $("accountModalTitle").textContent = `계정 수정 (${a.id})`;
+        $<HTMLInputElement>("accountName").value = a.name;
+        $<HTMLInputElement>("accountPin").value = "";
+        $<HTMLInputElement>("accountAuthPin").value = "";
+        $("accountPinHint").textContent = a.has_pin ? "비워두면 기존 비밀번호 유지" : "비밀번호를 설정해야 이 계정으로 로그인할 수 있습니다";
+        $("accountFormError").textContent = "";
+        $("accountModal").classList.add("show");
+      }
+      function closeAccountModal() {
+        $("accountModal").classList.remove("show");
+        editingAccountId = null;
+      }
+      $("accountModalCancel").addEventListener("click", closeAccountModal);
+      $("accountModalSave").addEventListener("click", async () => {
+        if (!editingAccountId) return;
+        const name = $<HTMLInputElement>("accountName").value.trim();
+        const pin = $<HTMLInputElement>("accountPin").value.trim();
+        const authPin = $<HTMLInputElement>("accountAuthPin").value.trim();
+        const errorEl = $("accountFormError");
+        if (!name) {
+          errorEl.textContent = "이름을 입력해주세요.";
+          return;
+        }
+        if (pin && !/^\d{4}$/.test(pin)) {
+          errorEl.textContent = "비밀번호는 숫자 4자리여야 합니다.";
+          return;
+        }
+        if (!authPin) {
+          errorEl.textContent = "내 비밀번호를 입력해주세요.";
+          return;
+        }
+        const btn = $<HTMLButtonElement>("accountModalSave");
+        btn.disabled = true;
+        const { error } = await supabase.rpc("update_admin_account", {
+          p_auth_pin: authPin,
+          p_id: editingAccountId,
+          p_name: name,
+          p_pin: pin || null,
+        });
+        btn.disabled = false;
+        if (error) {
+          errorEl.textContent = "저장에 실패했습니다: " + error.message;
+          return;
+        }
+        closeAccountModal();
+        loadAccounts();
       });
 
       // ── 삭제 모달 ──
