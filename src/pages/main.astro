@@ -127,7 +127,7 @@ import "../styles/panel.css";
         <!-- 대기 화면 -->
         <div id="mockIdle" class="card" style="text-align:center;padding:32px 20px">
           <p style="font-size:15px;color:var(--black);line-height:1.6;margin-bottom:6px">10~15분 랜덤 시간의 모의면접을 진행합니다.</p>
-          <p class="empty-text" style="margin-bottom:20px">자기소개 → 본질문 → 꼬리질문 → 마무리 질문 순서로 진행되며,<br />답변은 음성으로 녹음됩니다. 마이크 권한을 허용해주세요.</p>
+          <p class="empty-text" style="margin-bottom:20px">본질문 → 꼬리질문 순서로 진행되며,<br />답변은 음성으로 녹음됩니다. 마이크 권한을 허용해주세요.</p>
           <p class="empty-text" id="mockAssignedNote" style="margin-bottom:14px">배정 여부를 확인하는 중...</p>
           <button class="btn-primary-sm hidden" id="mockStartBtn" style="padding:0 24px;height:40px;font-size:14px">모의면접 시작</button>
         </div>
@@ -543,15 +543,14 @@ import "../styles/panel.css";
       }
 
       // ── 모의면접 ──
-      const MOCK_INTRO_PROMPT = "1분 내외로 자기소개를 해주세요.";
-      const MOCK_CLOSING_PROMPT = "마지막으로 강조하고 싶은 점이나 하고 싶은 말이 있다면 자유롭게 말씀해주세요.";
       const MOCK_FALLBACK_FOLLOWUPS = [
         "방금 답변한 내용 중 가장 어려웠던 부분을 좀 더 구체적으로 설명해주세요.",
         "그 경험에서 배운 점을 다른 상황에도 적용한다면 어떻게 적용하겠습니까?",
         "그 결론에 도달하게 된 근거를 조금 더 자세히 말해주세요.",
       ];
 
-      type MockItemType = "intro" | "main" | "followup" | "closing";
+      // 자기소개/마무리 질문은 더 이상 자동 출제하지 않음 (과거 기록에는 intro/closing 항목이 남아 있을 수 있음)
+      type MockItemType = "main" | "followup";
       type MockItem = { type: MockItemType; questionText: string; sourceQuestionId?: string | null };
       type MockPoolQuestion = { id: string; question_text: string };
 
@@ -573,10 +572,11 @@ import "../styles/panel.css";
       let mockProcessing = false; // 녹음 종료 후 업로드/AI 응답을 기다리는 중
       let mockStarting = false;
 
-      function mockProgressLabel(type: MockItemType): string {
-        if (type === "intro") return "자기소개";
+      function mockProgressLabel(type: string): string {
         if (type === "main") return "본질문";
         if (type === "followup") return "꼬리질문";
+        // 예전 기록(자동 출제하던 시절)에만 남아 있는 항목
+        if (type === "intro") return "자기소개";
         return "마무리 질문";
       }
 
@@ -718,7 +718,7 @@ import "../styles/panel.css";
         $("mockActive").classList.remove("hidden");
 
         startMockTimer();
-        showMockItem({ type: "intro", questionText: MOCK_INTRO_PROMPT });
+        goToNextMainOrFinish();
       }
 
       function startMockTimer() {
@@ -731,10 +731,10 @@ import "../styles/panel.css";
         if (remainMs <= 0) {
           $("mockTimer").textContent = "남은 시간 00:00";
           if (mockTimerInterval) window.clearInterval(mockTimerInterval);
-          // 녹음 중이거나 업로드/AI 응답을 기다리는 중이면 건드리지 않음 (끝난 뒤 자연스럽게 마무리 질문으로 이동)
-          if (mockCurrentItem && mockCurrentItem.type !== "closing" && !mockIsRecording && !mockProcessing) {
+          // 녹음 중이거나 업로드/AI 응답을 기다리는 중이면 건드리지 않음 (끝난 뒤 자연스럽게 종료로 이동)
+          if (mockCurrentItem && !mockIsRecording && !mockProcessing) {
             mockPairsRemaining = 0;
-            showMockItem({ type: "closing", questionText: MOCK_CLOSING_PROMPT });
+            void finishMockSession();
           }
           return;
         }
@@ -885,38 +885,28 @@ import "../styles/panel.css";
       }
 
       async function advanceMockSession(prevItem: MockItem, followupQuestion: string | null) {
-        if (prevItem.type === "intro") {
-          goToNextMainOrClosing();
-          return;
-        }
         if (prevItem.type === "main") {
-          // 제한 시간이 이미 지났으면 꼬리질문 없이 바로 다음(마무리)으로 진행
+          // 제한 시간이 이미 지났으면 꼬리질문 없이 바로 다음(종료)으로 진행
           if (mockFollowupEnabled && Date.now() < mockDeadline) {
             showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
           } else {
             mockPairsRemaining -= 1;
-            goToNextMainOrClosing();
+            await goToNextMainOrFinish();
           }
           return;
         }
-        if (prevItem.type === "followup") {
-          mockPairsRemaining -= 1;
-          goToNextMainOrClosing();
-          return;
-        }
-        if (prevItem.type === "closing") {
-          await finishMockSession();
-        }
+        mockPairsRemaining -= 1;
+        await goToNextMainOrFinish();
       }
 
-      function goToNextMainOrClosing() {
+      async function goToNextMainOrFinish() {
         const useManual = mockSelectedQuestionIds && mockSelectedQuestionIds.length > 0;
         const hasNext = Date.now() < mockDeadline && (useManual ? mockManualQueue.length > 0 : mockPairsRemaining > 0 && mockPool.length > 0);
         if (hasNext) {
           const q = useManual ? mockManualQueue.shift()! : mockPool.splice(Math.floor(Math.random() * mockPool.length), 1)[0];
           showMockItem({ type: "main", questionText: q.question_text, sourceQuestionId: q.id });
         } else {
-          showMockItem({ type: "closing", questionText: MOCK_CLOSING_PROMPT });
+          await finishMockSession();
         }
       }
 
