@@ -730,12 +730,8 @@ import "../styles/panel.css";
         const remainMs = mockDeadline - Date.now();
         if (remainMs <= 0) {
           $("mockTimer").textContent = "남은 시간 00:00";
+          // 제한 시간은 참고용 표시일 뿐, 지나도 면접을 강제로 종료하지 않음
           if (mockTimerInterval) window.clearInterval(mockTimerInterval);
-          // 녹음 중이거나 업로드/AI 응답을 기다리는 중이면 건드리지 않음 (끝난 뒤 자연스럽게 종료로 이동)
-          if (mockCurrentItem && !mockIsRecording && !mockProcessing) {
-            mockPairsRemaining = 0;
-            void finishMockSession();
-          }
           return;
         }
         const totalSec = Math.floor(remainMs / 1000);
@@ -886,8 +882,7 @@ import "../styles/panel.css";
 
       async function advanceMockSession(prevItem: MockItem, followupQuestion: string | null) {
         if (prevItem.type === "main") {
-          // 제한 시간이 이미 지났으면 꼬리질문 없이 바로 다음(종료)으로 진행
-          if (mockFollowupEnabled && Date.now() < mockDeadline) {
+          if (mockFollowupEnabled) {
             showMockItem({ type: "followup", questionText: followupQuestion ?? pickRandom(MOCK_FALLBACK_FOLLOWUPS) });
           } else {
             mockPairsRemaining -= 1;
@@ -901,7 +896,7 @@ import "../styles/panel.css";
 
       async function goToNextMainOrFinish() {
         const useManual = mockSelectedQuestionIds && mockSelectedQuestionIds.length > 0;
-        const hasNext = Date.now() < mockDeadline && (useManual ? mockManualQueue.length > 0 : mockPairsRemaining > 0 && mockPool.length > 0);
+        const hasNext = (useManual ? mockManualQueue.length > 0 : mockPairsRemaining > 0 && mockPool.length > 0);
         if (hasNext) {
           const q = useManual ? mockManualQueue.shift()! : mockPool.splice(Math.floor(Math.random() * mockPool.length), 1)[0];
           showMockItem({ type: "main", questionText: q.question_text, sourceQuestionId: q.id });
