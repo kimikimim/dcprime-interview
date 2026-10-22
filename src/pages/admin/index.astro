@@ -1228,7 +1228,7 @@ import "../../styles/panel.css";
         // DB에 voice_only 컬럼이 아직 없으면(SQL 미실행) 그 항목만 빼고 배정하고 안내
         if (error && /voice_only/.test(error.message)) {
           ({ error } = await supabase.from("mock_sessions").insert(rows.map(({ voice_only, ...rest }) => rest)));
-          if (!error && voiceOnly) alert("배정은 되었지만 DB 업데이트 전이라 '음성 전용' 설정은 저장되지 않았습니다. (supabase-setup.sql 실행 필요)");
+          if (!error && voiceOnly) alert("배정은 되었지만 DB 업데이트 전이라 '음성 전용' on/off는 저장되지 않았습니다. 학생에게는 모두 음성 전용으로 진행됩니다. (supabase-setup.sql 실행 필요)");
         }
         if (error) {
           alert("모의면접 배정에 실패했습니다: " + error.message);

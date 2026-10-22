@@ -658,7 +658,8 @@ import "../styles/panel.css";
           mockPlannedDuration = data.planned_duration_seconds;
           mockFollowupEnabled = data.followup_enabled ?? true;
           mockSelectedQuestionIds = data.selected_question_ids ?? null;
-          mockVoiceOnly = data.voice_only ?? false;
+          // DB에 voice_only 컬럼이 아직 없으면(SQL 미실행) 배정 면접도 기본적으로 음성 전용으로 진행
+          mockVoiceOnly = data.voice_only ?? true;
           $("mockSelfVoiceRow").classList.add("hidden");
           $("mockAssignedNote").textContent = "선생님이 배정한 모의면접이 있습니다.";
           $<HTMLButtonElement>("mockStartBtn").textContent = "모의면접 시작";
