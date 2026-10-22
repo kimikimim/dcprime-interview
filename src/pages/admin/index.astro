@@ -1144,7 +1144,7 @@ import "../../styles/panel.css";
       async function loadMockAssignments() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids, assigned_by, voice_only")
+          .select("*")
           .order("started_at", { ascending: false });
         const list = $("mockAssignList");
         if (error) {
@@ -1166,7 +1166,7 @@ import "../../styles/panel.css";
               <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
                   <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)} <span class="tag-pill" style="margin-left:4px">${tag}</span></p>
-                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · 음성 전용 ${row.voice_only ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
+                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${row.voice_only === undefined ? "" : `음성 전용 ${row.voice_only ? "ON" : "OFF"} · `}${new Date(row.started_at).toLocaleString("ko-KR")}</p>
                 </div>
                 <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>
               </div>
@@ -1224,7 +1224,12 @@ import "../../styles/panel.css";
           voice_only: voiceOnly,
           selected_question_ids: selectedQuestionIds,
         }));
-        const { error } = await supabase.from("mock_sessions").insert(rows);
+        let { error } = await supabase.from("mock_sessions").insert(rows);
+        // DB에 voice_only 컬럼이 아직 없으면(SQL 미실행) 그 항목만 빼고 배정하고 안내
+        if (error && /voice_only/.test(error.message)) {
+          ({ error } = await supabase.from("mock_sessions").insert(rows.map(({ voice_only, ...rest }) => rest)));
+          if (!error && voiceOnly) alert("배정은 되었지만 DB 업데이트 전이라 '음성 전용' 설정은 저장되지 않았습니다. (supabase-setup.sql 실행 필요)");
+        }
         if (error) {
           alert("모의면접 배정에 실패했습니다: " + error.message);
           return;

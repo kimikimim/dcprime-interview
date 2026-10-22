@@ -680,18 +680,19 @@ import "../styles/panel.css";
         mockStarting = true;
         try {
           if (!mockSessionId) {
-            const { data, error } = await supabase
-              .from("mock_sessions")
-              .insert({
-                student_id: session.id,
-                planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
-                status: "assigned",
-                followup_enabled: true,
-                assigned_by: "self",
-                voice_only: $<HTMLInputElement>("mockSelfVoiceToggle").checked,
-              })
-              .select()
-              .single();
+            const wantVoice = $<HTMLInputElement>("mockSelfVoiceToggle").checked;
+            const base = {
+              student_id: session.id,
+              planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
+              status: "assigned",
+              followup_enabled: true,
+              assigned_by: "self",
+            };
+            let { data, error } = await supabase.from("mock_sessions").insert({ ...base, voice_only: wantVoice }).select().single();
+            // DB에 voice_only 컬럼이 아직 없으면(SQL 미실행) 그 항목만 빼고 다시 시도
+            if (error && /voice_only/.test(error.message)) {
+              ({ data, error } = await supabase.from("mock_sessions").insert(base).select().single());
+            }
             if (error || !data) {
               alert("모의면접 생성에 실패했습니다: " + error?.message);
               return;
@@ -700,7 +701,7 @@ import "../styles/panel.css";
             mockPlannedDuration = data.planned_duration_seconds;
             mockFollowupEnabled = true;
             mockSelectedQuestionIds = null;
-            mockVoiceOnly = data.voice_only ?? false;
+            mockVoiceOnly = wantVoice;
           }
           await beginMockSession();
         } finally {
