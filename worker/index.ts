@@ -150,7 +150,17 @@ async function generateQuestionsFromRecord(req: Request, env: Env): Promise<Resp
 // ── 모의면접 음성 전용 모드: 질문 문장을 Gemini TTS로 읽어 주는 음성(WAV) 생성 ──
 const TTS_MODELS = ["gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts"];
 const TTS_VOICES = new Set(["Kore", "Charon", "Orus", "Fenrir", "Puck", "Zephyr", "Aoede", "Leda", "Sulafat", "Gacrux", "Algieba", "Rasalgethi"]);
-const TTS_DEFAULT_VOICE = "Kore";
+const TTS_DEFAULT_VOICE = "Charon";
+// 말투(연기 지시) 프리셋. 바꾸면 캐시가 섞이지 않게 키에 이름을 포함시킴
+const TTS_STYLES: Record<string, string> = {
+  natural:
+    "대학 면접장에서 교수 면접관이 학생에게 직접 말을 거는 것처럼, 정중하지만 자연스러운 구어체 억양으로 보통 속도로 말하세요. 글을 낭독하듯 또박또박 끊어 읽지 말고, 사람이 실제로 질문하듯 문장의 높낮이와 쉼을 자연스럽게 주세요.",
+  warm:
+    "친절하고 부드러운 교수님이 학생이 긴장하지 않도록 편안하게 질문하는 말투로, 따뜻하고 자연스럽게 보통 속도로 말하세요. 낭독하는 느낌 없이 대화하듯 말하세요.",
+  serious:
+    "실전 대학 면접의 중후하고 침착한 면접관 말투로, 군더더기 없이 담담하게 보통 속도로 말하세요. 로봇처럼 일정한 박자로 읽지 말고 사람처럼 자연스러운 억양을 쓰세요.",
+};
+const TTS_DEFAULT_STYLE = "natural";
 const TTS_MAX_CHARS = 1500;
 
 function base64ToBytes(b64: string): Uint8Array {
@@ -190,7 +200,7 @@ async function sha256Hex(text: string): Promise<string> {
 }
 
 async function generateTts(req: Request, env: Env): Promise<Response> {
-  const { text, voice } = (await req.json()) as any;
+  const { text, voice, style } = (await req.json()) as any;
   if (typeof text !== "string" || !text.trim()) return json({ error: "text가 필요합니다." }, 400);
   if (text.length > TTS_MAX_CHARS) return json({ error: `text는 ${TTS_MAX_CHARS}자 이하여야 합니다.` }, 400);
   const apiKey = env.GEMINI_API_KEY;
@@ -198,14 +208,15 @@ async function generateTts(req: Request, env: Env): Promise<Response> {
 
   const voiceName = typeof voice === "string" && TTS_VOICES.has(voice) ? voice : env.GEMINI_TTS_VOICE ?? TTS_DEFAULT_VOICE;
   const models = env.GEMINI_TTS_MODEL ? [env.GEMINI_TTS_MODEL] : TTS_MODELS;
+  const styleName = typeof style === "string" && style in TTS_STYLES ? style : TTS_DEFAULT_STYLE;
 
   // 같은 질문은 한 번만 생성하고 이후에는 캐시에서 바로 응답 (질문 은행은 고정 텍스트라 적중률이 높음)
   const cache = (caches as any).default as Cache;
-  const cacheKey = new Request(`https://tts-cache.internal/${await sha256Hex(`${models[0]}|${voiceName}|${text}`)}`);
+  const cacheKey = new Request(`https://tts-cache.internal/${await sha256Hex(`${models[0]}|${voiceName}|${styleName}|${text}`)}`);
   const cached = await cache.match(cacheKey);
   if (cached) return cached;
 
-  const prompt = `면접관이 지원자에게 질문을 읽어 주듯, 차분하고 또렷하며 약간 느린 속도로 다음 문장을 한국어로 읽으세요. 문장 외에 다른 말은 덧붙이지 마세요.\n\n${text}`;
+  const prompt = `${TTS_STYLES[styleName]} 아래 문장만 그대로 말하고 다른 말은 덧붙이지 마세요.\n\n${text}`;
   let lastErr = "";
   for (const model of models) {
     for (let attempt = 0; attempt < 2; attempt++) {
