@@ -129,6 +129,10 @@ import "../styles/panel.css";
           <p style="font-size:15px;color:var(--black);line-height:1.6;margin-bottom:6px">10~15분 정도를 목표로 모의면접을 진행합니다.</p>
           <p class="empty-text" style="margin-bottom:20px">본질문 → 꼬리질문 순서로 진행되며, 시간은 참고용이라 질문이 모두 끝나야 종료됩니다.<br />답변은 음성으로 녹음됩니다. 마이크 권한을 허용해주세요.</p>
           <p class="empty-text" id="mockAssignedNote" style="margin-bottom:14px">배정 여부를 확인하는 중...</p>
+          <label id="mockSelfVoiceRow" class="hidden" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:14px;font-size:13px;color:var(--black);cursor:pointer">
+            <input type="checkbox" id="mockSelfVoiceToggle" checked />
+            음성 전용 (질문을 글로 보지 않고 목소리로만 듣기)
+          </label>
           <button class="btn-primary-sm hidden" id="mockStartBtn" style="padding:0 24px;height:40px;font-size:14px">모의면접 시작</button>
         </div>
 
@@ -169,6 +173,20 @@ import "../styles/panel.css";
         <div class="modal-actions">
           <button class="modal-btn modal-btn--cancel" id="mockHistoryClose">닫기</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 모의면접 음성 전용 화면 (질문 글 없이 검은 화면 + 음성) -->
+    <div id="mockVoiceStage" class="hidden" style="position:fixed;inset:0;z-index:9999;background:#000;color:#e5e7eb;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+      <div style="position:absolute;top:18px;left:20px;font-size:12px;color:#6b7280" id="vProgress"></div>
+      <div style="position:absolute;top:18px;right:20px;font-size:12px;color:#6b7280" id="vTimer"></div>
+      <p id="vMessage" style="font-size:15px;color:#9ca3af;min-height:24px;margin-bottom:28px;line-height:1.6"></p>
+      <p id="vFallbackText" class="hidden" style="font-size:16px;color:#fff;line-height:1.7;max-width:420px;white-space:pre-wrap;margin-bottom:24px"></p>
+      <div style="display:flex;flex-direction:column;gap:12px;align-items:center;width:100%;max-width:280px">
+        <button id="vListenBtn" type="button" style="width:100%;height:56px;border-radius:28px;background:#fff;color:#000;font-size:16px;font-weight:700;border:none">질문 시작</button>
+        <button id="vRecordBtn" type="button" class="hidden" style="width:100%;height:56px;border-radius:28px;background:#0064FF;color:#fff;font-size:16px;font-weight:700;border:none">답변 시작</button>
+        <button id="vReplayBtn" type="button" class="hidden" style="width:100%;height:44px;border-radius:22px;background:transparent;color:#9ca3af;font-size:14px;border:1px solid #374151">다시 듣기 (1회)</button>
+        <button id="vTextBtn" type="button" class="hidden" style="background:transparent;color:#6b7280;font-size:12px;border:none;text-decoration:underline;margin-top:8px">음성이 안 나와요 (글로 보기)</button>
       </div>
     </div>
 
@@ -571,6 +589,8 @@ import "../styles/panel.css";
       let mockRecordStarting = false;
       let mockProcessing = false; // 녹음 종료 후 업로드/AI 응답을 기다리는 중
       let mockStarting = false;
+      let mockVoiceOnly = false;
+      let mockWakeLock: any = null;
 
       function mockProgressLabel(type: string): string {
         if (type === "main") return "본질문";
@@ -624,7 +644,7 @@ import "../styles/panel.css";
       async function checkMockAssignment() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, planned_duration_seconds, followup_enabled, selected_question_ids")
+          .select("*")
           .eq("student_id", session.id)
           .eq("status", "assigned")
           .order("started_at", { ascending: true })
@@ -638,12 +658,16 @@ import "../styles/panel.css";
           mockPlannedDuration = data.planned_duration_seconds;
           mockFollowupEnabled = data.followup_enabled ?? true;
           mockSelectedQuestionIds = data.selected_question_ids ?? null;
+          mockVoiceOnly = data.voice_only ?? false;
+          $("mockSelfVoiceRow").classList.add("hidden");
           $("mockAssignedNote").textContent = "선생님이 배정한 모의면접이 있습니다.";
           $<HTMLButtonElement>("mockStartBtn").textContent = "모의면접 시작";
         } else {
           mockSessionId = null;
           mockFollowupEnabled = true;
           mockSelectedQuestionIds = null;
+          mockVoiceOnly = false;
+          $("mockSelfVoiceRow").classList.remove("hidden");
           $("mockAssignedNote").textContent = "배정된 모의면접은 없지만, 자유롭게 연습할 수 있습니다.";
           $<HTMLButtonElement>("mockStartBtn").textContent = "자율 연습 시작";
         }
@@ -664,6 +688,7 @@ import "../styles/panel.css";
                 status: "assigned",
                 followup_enabled: true,
                 assigned_by: "self",
+                voice_only: $<HTMLInputElement>("mockSelfVoiceToggle").checked,
               })
               .select()
               .single();
@@ -675,6 +700,7 @@ import "../styles/panel.css";
             mockPlannedDuration = data.planned_duration_seconds;
             mockFollowupEnabled = true;
             mockSelectedQuestionIds = null;
+            mockVoiceOnly = data.voice_only ?? false;
           }
           await beginMockSession();
         } finally {
@@ -715,7 +741,13 @@ import "../styles/panel.css";
 
         $("mockIdle").classList.add("hidden");
         $("mockDone").classList.add("hidden");
-        $("mockActive").classList.remove("hidden");
+        if (mockVoiceOnly) {
+          $("mockVoiceStage").classList.remove("hidden");
+          void requestWakeLock();
+          void loadKoVoice();
+        } else {
+          $("mockActive").classList.remove("hidden");
+        }
 
         startMockTimer();
         goToNextMainOrFinish();
@@ -730,6 +762,7 @@ import "../styles/panel.css";
         const remainMs = mockDeadline - Date.now();
         if (remainMs <= 0) {
           $("mockTimer").textContent = "남은 시간 00:00";
+          $("vTimer").textContent = "00:00";
           // 제한 시간은 참고용 표시일 뿐, 지나도 면접을 강제로 종료하지 않음
           if (mockTimerInterval) window.clearInterval(mockTimerInterval);
           return;
@@ -738,13 +771,174 @@ import "../styles/panel.css";
         const m = String(Math.floor(totalSec / 60)).padStart(2, "0");
         const s = String(totalSec % 60).padStart(2, "0");
         $("mockTimer").textContent = `남은 시간 ${m}:${s}`;
+        $("vTimer").textContent = `${m}:${s}`;
       }
+
+      // ── 음성 전용 모드: 질문을 TTS(기기 내장 음성)로만 들려줌 ──
+      type VoicePhase = "ready" | "speaking" | "heard" | "recording" | "processing";
+      let voiceReplaysLeft = 1;
+      let voiceTextShown = false;
+      let voiceFailed = false;
+      let voicePhase: VoicePhase = "ready";
+      let koVoice: SpeechSynthesisVoice | null = null;
+
+      function setVoicePhase(phase: VoicePhase, message?: string) {
+        voicePhase = phase;
+        const listen = $<HTMLButtonElement>("vListenBtn");
+        const record = $<HTMLButtonElement>("vRecordBtn");
+        const replay = $<HTMLButtonElement>("vReplayBtn");
+        const textBtn = $<HTMLButtonElement>("vTextBtn");
+        const msg = $("vMessage");
+        listen.classList.toggle("hidden", phase !== "ready");
+        record.classList.toggle("hidden", phase !== "heard" && phase !== "recording");
+        replay.classList.toggle("hidden", !(phase === "heard" && voiceReplaysLeft > 0 && !voiceFailed));
+        textBtn.classList.toggle("hidden", !(voiceFailed && !voiceTextShown && (phase === "ready" || phase === "heard")));
+        $("vFallbackText").classList.toggle("hidden", !voiceTextShown);
+        if (phase === "ready") {
+          listen.textContent = voiceFailed ? "다시 시도" : "질문 시작";
+          msg.textContent = message ?? "";
+        } else if (phase === "speaking") {
+          msg.textContent = message ?? "질문을 듣고 있습니다...";
+        } else if (phase === "heard") {
+          record.textContent = "답변 시작";
+          record.disabled = false;
+          msg.textContent = message ?? "질문이 끝났습니다. 준비되면 답변을 시작하세요.";
+        } else if (phase === "recording") {
+          record.textContent = "답변 끝내기";
+          msg.textContent = "답변을 녹음하고 있습니다...";
+        } else {
+          msg.textContent = message ?? "답변을 처리하고 있습니다...";
+        }
+      }
+
+      function loadKoVoice(): Promise<void> {
+        return new Promise((resolve) => {
+          const synth = window.speechSynthesis;
+          if (!synth) return resolve();
+          const pick = () => {
+            const ko = synth.getVoices().filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("ko"));
+            koVoice = ko.find((v) => /yuna|유나|google|sunhi|선희/i.test(v.name)) ?? ko[0] ?? null;
+            return ko.length > 0;
+          };
+          if (pick()) return resolve();
+          // 일부 브라우저(안드로이드 크롬 등)는 음성 목록을 비동기로 불러옴
+          const timer = window.setTimeout(() => resolve(), 1500);
+          synth.addEventListener("voiceschanged", () => {
+            if (pick()) {
+              window.clearTimeout(timer);
+              resolve();
+            }
+          }, { once: true });
+        });
+      }
+
+      // 긴 문장을 한 번에 읽히면 일부 기기에서 중간에 끊겨서 문장 단위로 나눠 순서대로 읽힘
+      function speakText(text: string): Promise<boolean> {
+        return new Promise((resolve) => {
+          const synth = window.speechSynthesis;
+          if (!synth || typeof SpeechSynthesisUtterance === "undefined") return resolve(false);
+          synth.cancel();
+          const chunks = text.match(/[^.?!。\n]+[.?!。]?/g)?.map((c) => c.trim()).filter(Boolean) ?? [text];
+          let started = false;
+          let finished = false;
+          const done = (ok: boolean) => {
+            if (finished) return;
+            finished = true;
+            window.clearTimeout(watchdog);
+            resolve(ok);
+          };
+          // 4초 안에 소리가 시작되지 않으면 재생 불가로 판단
+          const watchdog = window.setTimeout(() => {
+            if (!started) {
+              synth.cancel();
+              done(false);
+            }
+          }, 4000);
+          chunks.forEach((chunk, i) => {
+            const u = new SpeechSynthesisUtterance(chunk);
+            u.lang = "ko-KR";
+            if (koVoice) u.voice = koVoice;
+            u.rate = 0.95;
+            u.onstart = () => {
+              started = true;
+            };
+            u.onerror = (e) => {
+              if (e.error === "canceled" || e.error === "interrupted") return;
+              done(false);
+            };
+            if (i === chunks.length - 1) u.onend = () => done(started);
+            synth.speak(u);
+          });
+        });
+      }
+
+      async function playCurrentQuestion() {
+        if (!mockCurrentItem) return;
+        setVoicePhase("speaking");
+        $<HTMLButtonElement>("vListenBtn").classList.add("hidden");
+        await loadKoVoice();
+        const ok = await speakText(mockCurrentItem.questionText);
+        if (!mockCurrentItem) return;
+        if (ok) {
+          voiceFailed = false;
+          setVoicePhase("heard");
+        } else {
+          voiceFailed = true;
+          setVoicePhase("ready", "음성을 재생하지 못했습니다. 기기 볼륨/무음 상태를 확인하고 다시 시도해주세요.");
+        }
+      }
+
+      $("vListenBtn").addEventListener("click", () => void playCurrentQuestion());
+      $("vReplayBtn").addEventListener("click", () => {
+        if (voiceReplaysLeft <= 0) return;
+        voiceReplaysLeft -= 1;
+        void playCurrentQuestion();
+      });
+      $("vRecordBtn").addEventListener("click", () => void toggleMockRecording());
+      // 음성이 아예 나오지 않는 기기를 위한 비상용: 이때만 이번 질문을 글로 보여줌
+      $("vTextBtn").addEventListener("click", () => {
+        if (!mockCurrentItem) return;
+        voiceTextShown = true;
+        $("vFallbackText").textContent = mockCurrentItem.questionText;
+        setVoicePhase("heard");
+      });
+
+      // 면접 중 화면이 자동으로 꺼지지 않게 유지 (지원하는 브라우저만)
+      async function requestWakeLock() {
+        try {
+          const wl = (navigator as any).wakeLock;
+          if (wl && !mockWakeLock) mockWakeLock = await wl.request("screen");
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      async function releaseWakeLock() {
+        try {
+          await mockWakeLock?.release();
+        } catch {}
+        mockWakeLock = null;
+      }
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible" && mockVoiceOnly && mockSessionId && !$("mockVoiceStage").classList.contains("hidden")) {
+          mockWakeLock = null;
+          void requestWakeLock();
+        }
+      });
 
       function showMockItem(item: MockItem) {
         mockCurrentItem = item;
         mockSequenceOrder += 1;
-        $("mockQuestionText").textContent = item.questionText;
         $("mockProgress").textContent = mockProgressLabel(item.type);
+        if (mockVoiceOnly) {
+          // 음성 전용: 질문 글은 화면에 올리지 않음
+          $("mockQuestionText").textContent = "";
+          $("vProgress").textContent = mockProgressLabel(item.type);
+          voiceReplaysLeft = 1;
+          voiceTextShown = false;
+          setVoicePhase("ready");
+          return;
+        }
+        $("mockQuestionText").textContent = item.questionText;
         $<HTMLButtonElement>("mockRecordBtn").textContent = "답변 녹음 시작";
         $<HTMLButtonElement>("mockRecordBtn").disabled = false;
         $("mockRecordStatus").textContent = "";
@@ -778,6 +972,7 @@ import "../styles/panel.css";
           mockIsRecording = true;
           $<HTMLButtonElement>("mockRecordBtn").textContent = "녹음 정지";
           $("mockRecordStatus").textContent = "녹음 중...";
+          if (mockVoiceOnly) setVoicePhase("recording");
         } catch (err) {
           alert("마이크 권한이 필요합니다.");
           console.error(err);
@@ -810,10 +1005,12 @@ import "../styles/panel.css";
         if (blob.size === 0) {
           $("mockRecordStatus").textContent = "녹음된 내용이 없습니다. 다시 녹음해주세요.";
           $<HTMLButtonElement>("mockRecordBtn").textContent = "답변 녹음 시작";
+          if (mockVoiceOnly) setVoicePhase("heard", "녹음된 내용이 없습니다. 다시 답변해주세요.");
           return;
         }
 
         mockProcessing = true;
+        if (mockVoiceOnly) setVoicePhase("processing");
         try {
           await processMockAnswer(item, seq, blob, mimeType);
         } finally {
@@ -912,6 +1109,9 @@ import "../styles/panel.css";
           .update({ status: "completed", ended_at: new Date().toISOString() })
           .eq("id", mockSessionId!);
         $("mockActive").classList.add("hidden");
+        $("mockVoiceStage").classList.add("hidden");
+        window.speechSynthesis?.cancel();
+        void releaseWakeLock();
         $("mockDone").classList.remove("hidden");
         loadMockHistory();
       }

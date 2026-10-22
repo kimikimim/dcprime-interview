@@ -145,6 +145,10 @@ import "../../styles/panel.css";
               <input type="checkbox" id="mockFollowupToggle" checked />
               꼬리질문 포함 (AI가 답변을 듣고 실시간으로 생성)
             </label>
+            <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;color:var(--black);cursor:pointer">
+              <input type="checkbox" id="mockVoiceToggle" checked />
+              음성 전용 (질문을 글로 보여주지 않고 목소리로만 들려줌 — 긴 제시문 문제에는 끄는 것을 권장)
+            </label>
 
             <p class="form-label" style="margin-top:14px">본질문 선택 방식</p>
             <div style="display:flex;gap:16px;margin-bottom:10px">
@@ -1140,7 +1144,7 @@ import "../../styles/panel.css";
       async function loadMockAssignments() {
         const { data, error } = await supabase
           .from("mock_sessions")
-          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids, assigned_by")
+          .select("id, student_id, status, started_at, followup_enabled, selected_question_ids, assigned_by, voice_only")
           .order("started_at", { ascending: false });
         const list = $("mockAssignList");
         if (error) {
@@ -1162,7 +1166,7 @@ import "../../styles/panel.css";
               <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px">
                 <div>
                   <p class="student-mgmt-name" style="margin-bottom:2px">${escapeHtml(name)} <span class="tag-pill" style="margin-left:4px">${tag}</span></p>
-                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
+                  <p class="student-mgmt-meta">${mockStatusLabel(row.status)} · ${questionMode} · 꼬리질문 ${row.followup_enabled ? "ON" : "OFF"} · 음성 전용 ${row.voice_only ? "ON" : "OFF"} · ${new Date(row.started_at).toLocaleString("ko-KR")}</p>
                 </div>
                 <button class="btn-delete delete-mock-assignment" data-id="${row.id}" style="flex-shrink:0">삭제</button>
               </div>
@@ -1211,11 +1215,13 @@ import "../../styles/panel.css";
         }
 
         const followupEnabled = $<HTMLInputElement>("mockFollowupToggle").checked;
+        const voiceOnly = $<HTMLInputElement>("mockVoiceToggle").checked;
         const rows = [...mockSelectedStudentIds].map((student_id) => ({
           student_id,
           planned_duration_seconds: 600 + Math.floor(Math.random() * 301),
           status: "assigned",
           followup_enabled: followupEnabled,
+          voice_only: voiceOnly,
           selected_question_ids: selectedQuestionIds,
         }));
         const { error } = await supabase.from("mock_sessions").insert(rows);

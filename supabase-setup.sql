@@ -491,6 +491,8 @@ ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS selected_question_i
 
 -- 학생이 직접 시작한 자율 연습인지, 관리자가 배정한 것인지 구분해서 기록에 표시
 ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS assigned_by text NOT NULL DEFAULT 'admin' CHECK (assigned_by IN ('admin', 'self'));
+-- 음성 전용 모드: 질문을 글로 보여주지 않고 음성(TTS)으로만 들려줌
+ALTER TABLE interview.mock_sessions ADD COLUMN IF NOT EXISTS voice_only boolean NOT NULL DEFAULT false;
 
 DROP POLICY IF EXISTS "anon select interview_mock_sessions" ON interview.mock_sessions;
 DROP POLICY IF EXISTS "anon insert interview_mock_sessions" ON interview.mock_sessions;
