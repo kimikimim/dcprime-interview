@@ -873,12 +873,85 @@ import "../styles/panel.css";
         });
       }
 
+      // AI 음성(Gemini TTS, /api/tts): 질문이 화면에 뜨는 즉시 미리 만들어 두고, 실패하면 기기 내장 음성으로 대체
+      const ttsCache = new Map<string, Promise<string | null>>(); // 질문 문장 → 오디오 object URL
+      let ttsAudio: HTMLAudioElement | null = null;
+      const SILENT_WAV = "data:audio/wav;base64,UklGRmQGAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YUAGAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+      // 아이폰 사파리는 사용자 터치 안에서 한 번 재생해 둔 오디오 요소만 이후에 자유롭게 재생할 수 있음
+      function unlockTtsAudio() {
+        if (!ttsAudio) ttsAudio = new Audio();
+        ttsAudio.onended = null;
+        ttsAudio.onerror = null;
+        ttsAudio.src = SILENT_WAV;
+        void ttsAudio.play().catch(() => {});
+      }
+
+      async function fetchTts(text: string): Promise<string | null> {
+        try {
+          const res = await fetch("/api/tts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+          if (!res.ok) {
+            console.error("음성 생성 실패:", await res.text());
+            return null;
+          }
+          return URL.createObjectURL(await res.blob());
+        } catch (err) {
+          console.error(err);
+          return null;
+        }
+      }
+
+      function prefetchTts(text: string): Promise<string | null> {
+        let p = ttsCache.get(text);
+        if (!p) {
+          p = fetchTts(text);
+          ttsCache.set(text, p);
+          // 실패한 결과는 캐시에 남기지 않아 다시 듣기 때 재시도되게 함
+          void p.then((url) => {
+            if (!url) ttsCache.delete(text);
+          });
+        }
+        return p;
+      }
+
+      function clearTtsCache() {
+        for (const p of ttsCache.values()) void p.then((url) => url && URL.revokeObjectURL(url));
+        ttsCache.clear();
+      }
+
+      function playTtsUrl(url: string): Promise<boolean> {
+        return new Promise((resolve) => {
+          if (!ttsAudio) ttsAudio = new Audio();
+          const a = ttsAudio;
+          a.src = url;
+          a.onended = () => resolve(true);
+          a.onerror = () => resolve(false);
+          a.play().catch(() => resolve(false));
+        });
+      }
+
       async function playCurrentQuestion() {
         if (!mockCurrentItem) return;
-        setVoicePhase("speaking");
+        const item = mockCurrentItem;
+        setVoicePhase("speaking", "질문을 준비하고 있습니다...");
         $<HTMLButtonElement>("vListenBtn").classList.add("hidden");
-        await loadKoVoice();
-        const ok = await speakText(mockCurrentItem.questionText);
+        const url = await prefetchTts(item.questionText);
+        if (mockCurrentItem !== item) return;
+        let ok = false;
+        if (url) {
+          setVoicePhase("speaking");
+          ok = await playTtsUrl(url);
+        }
+        if (!ok) {
+          // AI 음성을 못 쓰면 기기 내장 음성으로 대체
+          setVoicePhase("speaking");
+          await loadKoVoice();
+          ok = await speakText(item.questionText);
+        }
         if (!mockCurrentItem) return;
         if (ok) {
           voiceFailed = false;
@@ -889,7 +962,10 @@ import "../styles/panel.css";
         }
       }
 
-      $("vListenBtn").addEventListener("click", () => void playCurrentQuestion());
+      $("vListenBtn").addEventListener("click", () => {
+        unlockTtsAudio();
+        void playCurrentQuestion();
+      });
       $("vReplayBtn").addEventListener("click", () => {
         if (voiceReplaysLeft <= 0) return;
         voiceReplaysLeft -= 1;
@@ -936,6 +1012,7 @@ import "../styles/panel.css";
           $("vProgress").textContent = mockProgressLabel(item.type);
           voiceReplaysLeft = 1;
           voiceTextShown = false;
+          void prefetchTts(item.questionText);
           setVoicePhase("ready");
           return;
         }
@@ -1112,6 +1189,8 @@ import "../styles/panel.css";
         $("mockActive").classList.add("hidden");
         $("mockVoiceStage").classList.add("hidden");
         window.speechSynthesis?.cancel();
+        ttsAudio?.pause();
+        clearTtsCache();
         void releaseWakeLock();
         $("mockDone").classList.remove("hidden");
         loadMockHistory();
@@ -1190,6 +1269,7 @@ import "../styles/panel.css";
 
       $("mockHistoryClose").addEventListener("click", () => $("mockHistoryModal").classList.remove("show"));
 
+      $("mockStartBtn").addEventListener("click", unlockTtsAudio);
       $("mockStartBtn").addEventListener("click", startMockSession);
       $("mockRecordBtn").addEventListener("click", toggleMockRecording);
       $("mockRestartBtn").addEventListener("click", () => {
