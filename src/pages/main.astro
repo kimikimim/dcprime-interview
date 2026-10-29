@@ -215,8 +215,20 @@ import "../styles/panel.css";
 
       $("logoutBtn").addEventListener("click", () => {
         sessionStorage.removeItem("student_session");
+        sessionStorage.removeItem("auth_pin");
         window.location.href = "/";
       });
+
+      // AI 기능(/api)은 로그인 확인이 필요함. 보안 적용 이전에 로그인한 세션은 PIN이 없으므로 다시 로그인시킴
+      function apiAuthHeaders(): Record<string, string> {
+        return { "Content-Type": "application/json", "X-Auth-Pin": sessionStorage.getItem("auth_pin") ?? "" };
+      }
+      function forceRelogin() {
+        alert("보안 업데이트로 다시 로그인이 필요합니다. 다시 로그인해주세요.");
+        sessionStorage.removeItem("student_session");
+        sessionStorage.removeItem("auth_pin");
+        window.location.href = "/";
+      }
 
       // ── 탭 전환 + 햄버거 메뉴 ──
       const tabBtns = document.querySelectorAll<HTMLButtonElement>(".tab-btn");
@@ -893,9 +905,13 @@ import "../styles/panel.css";
         try {
           const res = await fetch("/api/tts", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: apiAuthHeaders(),
             body: JSON.stringify({ text }),
           });
+          if (res.status === 401) {
+            forceRelogin();
+            return null;
+          }
           if (!res.ok) {
             console.error("음성 생성 실패:", await res.text());
             return null;
@@ -1122,9 +1138,7 @@ import "../styles/panel.css";
             const audioBase64 = await blobToBase64(blob);
             const res = await fetch("/api/generate-followup", {
               method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-              },
+              headers: apiAuthHeaders(),
               // 아이폰 사파리는 audio/mp4로 녹음하는데 Gemini는 audio/m4a 표기만 공식 지원
               body: JSON.stringify({
                 questionText: item.questionText,

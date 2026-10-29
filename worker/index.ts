@@ -257,17 +257,70 @@ async function generateTts(req: Request, env: Env): Promise<Response> {
   return json({ error: "음성 생성에 실패했습니다.", detail: lastErr }, 502);
 }
 
-const ROUTES: Record<string, (req: Request, env: Env) => Promise<Response>> = {
-  "/api/tts": generateTts,
-  "/api/generate-followup": generateFollowup,
-  "/api/generate-questions-from-record": generateQuestionsFromRecord,
+// ── 접근 제어: 로그인한 관리자/학생만 호출 가능 ──
+// 로그인 PIN을 X-Auth-Pin 헤더로 받아 Supabase의 기존 로그인 함수로 다시 확인한다.
+// (anon 키는 사이트 코드에 공개돼 있는 값이라 여기에 적어도 새로 노출되는 정보가 없음)
+const SUPABASE_URL = "https://smnakhjdtbqgwocwlluz.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtbmFraGpkdGJxZ3dvY3dsbHV6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NDc2MDQsImV4cCI6MjA5MjQyMzYwNH0._jfUSWEVlMr8oapYLul33LRrhEnRJBSgppGNR1jshnA";
+
+type Role = "admin" | "student";
+const authCache = new Map<string, { role: Role | null; expires: number }>();
+const AUTH_CACHE_MS = 5 * 60 * 1000;
+
+async function rpc(name: string, pin: string): Promise<any[] | null> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Profile": "interview",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ p_pw: pin }),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as any[];
+}
+
+async function resolveRole(pin: string): Promise<Role | null> {
+  if (!/^\d{4}$/.test(pin)) return null;
+  const hit = authCache.get(pin);
+  if (hit && hit.expires > Date.now()) return hit.role;
+  let role: Role | null = null;
+  const admin = await rpc("verify_admin_login", pin);
+  if (admin && admin.length > 0) role = "admin";
+  else {
+    const student = await rpc("verify_student_login", pin);
+    if (student && student.length > 0) role = "student";
+  }
+  // 성공한 로그인만 캐시 (틀린 PIN은 매번 다시 확인해서 비밀번호 변경/삭제가 바로 반영되게 함)
+  if (role) authCache.set(pin, { role, expires: Date.now() + AUTH_CACHE_MS });
+  return role;
+}
+
+// 단일 서버(isolate) 안에서만 유효한 간이 호출 제한: 같은 로그인이 짧은 시간에 너무 많이 호출하거나,
+// 같은 IP가 틀린 PIN을 반복해서 넣는 것을 막는다.
+const hits = new Map<string, number[]>();
+function overLimit(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const arr = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
+  arr.push(now);
+  hits.set(key, arr);
+  if (hits.size > 5000) for (const [k, v] of hits) if (v.every((t) => now - t >= windowMs)) hits.delete(k);
+  return arr.length > limit;
+}
+
+const ROUTES: Record<string, { handler: (req: Request, env: Env) => Promise<Response>; adminOnly?: boolean }> = {
+  "/api/tts": { handler: generateTts },
+  "/api/generate-followup": { handler: generateFollowup },
+  "/api/generate-questions-from-record": { handler: generateQuestionsFromRecord, adminOnly: true },
 };
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
-    const handler = ROUTES[url.pathname];
-    if (!handler) return json({ error: "Not found" }, 404);
+    const route = ROUTES[url.pathname];
+    if (!route) return json({ error: "Not found" }, 404);
     if (req.method !== "POST") return json({ error: "POST만 허용됩니다." }, 405);
 
     // 다른 사이트의 브라우저에서 이 API(=내 Gemini 키)를 가져다 쓰지 못하게 같은 출처만 허용
@@ -275,7 +328,19 @@ export default {
     if (origin && new URL(origin).host !== url.host) return json({ error: "허용되지 않은 출처입니다." }, 403);
 
     try {
-      return await handler(req, env);
+      const ip = req.headers.get("CF-Connecting-IP") ?? "unknown";
+      const pin = req.headers.get("X-Auth-Pin") ?? "";
+      const role = await resolveRole(pin);
+      if (!role) {
+        if (overLimit(`fail:${ip}`, 20, 10 * 60 * 1000)) return json({ error: "잠시 후 다시 시도해주세요." }, 429);
+        return json({ error: "로그인이 필요합니다." }, 401);
+      }
+      if (route.adminOnly && role !== "admin") return json({ error: "관리자만 사용할 수 있습니다." }, 403);
+      // 학생: 10분에 150회 / 관리자: 10분에 300회
+      if (overLimit(`use:${pin}`, role === "admin" ? 300 : 150, 10 * 60 * 1000)) {
+        return json({ error: "요청이 너무 많습니다. 잠시 후 다시 시도해주세요." }, 429);
+      }
+      return await route.handler(req, env);
     } catch (err) {
       console.error(err);
       return json({ error: String(err) }, 500);

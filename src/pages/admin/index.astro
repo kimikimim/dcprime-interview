@@ -327,6 +327,7 @@ import "../../styles/panel.css";
 
       $("logoutBtn").addEventListener("click", () => {
         sessionStorage.removeItem(SESSION_KEY);
+        sessionStorage.removeItem("auth_pin");
         window.location.href = "/";
       });
 
@@ -846,11 +847,13 @@ import "../../styles/panel.css";
           const pdfBase64 = await fileToBase64(file);
           const res = await fetch("/api/generate-questions-from-record", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
+            headers: { "Content-Type": "application/json", "X-Auth-Pin": sessionStorage.getItem("auth_pin") ?? "" },
             body: JSON.stringify({ pdfBase64, count }),
           });
+          if (res.status === 401) {
+            alert("보안 업데이트로 다시 로그인이 필요합니다. 로그아웃 후 다시 로그인해주세요.");
+            throw new Error("로그인이 필요합니다.");
+          }
 
           if (!res.ok) {
             const errText = await res.text();

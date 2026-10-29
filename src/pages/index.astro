@@ -162,6 +162,7 @@ import "../styles/global.css";
         if (adminAccount) {
           sessionStorage.setItem("admin_authed", "ok");
           sessionStorage.setItem("admin_account", JSON.stringify(adminAccount));
+          sessionStorage.setItem("auth_pin", pin); // AI 기능(/api) 호출 시 로그인 확인용
           loadingText.textContent = "관리자님, 환영해요!";
           setTimeout(() => {
             window.location.href = "/admin";
@@ -172,6 +173,7 @@ import "../styles/global.css";
         const { data, error } = await supabase.rpc("verify_student_login", { p_pw: pin });
         if (!error && data && data.length > 0) {
           sessionStorage.setItem("student_session", JSON.stringify(data[0]));
+          sessionStorage.setItem("auth_pin", pin); // AI 기능(/api) 호출 시 로그인 확인용
           loadingText.textContent = `${data[0].name}님, 환영해요!`;
           setTimeout(() => {
             window.location.href = "/main";
