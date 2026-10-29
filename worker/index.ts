@@ -235,6 +235,8 @@ async function generateTts(req: Request, env: Env): Promise<Response> {
         lastErr = await res.text();
         console.error("Gemini TTS error:", model, res.status, lastErr);
         if (res.status === 404) break; // 모델 이름이 없으면 다음 후보로
+        // 결제/키/한도 문제는 재시도해도 소용없으니 바로 중단 (불필요한 호출이 오류 횟수만 늘리지 않게)
+        if ([401, 402, 403, 429].includes(res.status)) return json({ error: "음성 생성에 실패했습니다.", detail: lastErr }, 502);
         continue;
       }
       const j: any = await res.json();
